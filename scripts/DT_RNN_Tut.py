@@ -224,6 +224,42 @@ def jobman(state, channel):
     valid_fn = theano.function([x,y, reset], valid_model.out,
           name='valid_fn', updates=valid_updates)
 
+    #### Sampling
+    ##### single-step sampling
+    def sample_fn(word_tm1, h_tm1):
+        x_emb = emb_words(word_tm1, use_noise = False, one_step=True)
+        h0 = rec(x_emb, state_before=h_tm1, one_step=True, use_noise=False)[-1]
+        word = output_layer.get_sample(state_below=h0, temp=1.)
+        return word, h0
+
+    ##### scan for iterating the single-step sampling multiple times
+    [samples, summaries], updates = scan(sample_fn,
+                      states = [
+                          TT.alloc(numpy.int64(0), state['sample_steps']),
+                          TT.alloc(numpy.float32(0), 1, eval(state['nhids'])[-1])],
+                      n_steps= state['sample_steps'],
+                      name='sampler_scan')
+
+    ##### define a Theano function
+    sample_fn = theano.function([], [samples], 
+        updates=updates, profile=False, name='sample_fn')
+    
+    ##### Load a dictionary
+    dictionary = numpy.load(state['dictionary'])
+    if state['chunks'] == 'chars':
+        dictionary = dictionary['unique_chars']
+    else:
+        dictionary = dictionary['unique_words']
+    def hook_fn():
+        sample = sample_fn()[0]
+        print 'Sample:',
+        if state['chunks'] == 'chars':
+            print "".join(dictionary[sample])
+        else:
+            for si in sample:
+                print dictionary[si],
+            print
+
     ### Build and Train a Model
     #### Define a model
     model = LM_Model(
@@ -252,6 +288,7 @@ def jobman(state, channel):
                     state,
                     channel,
                     train_cost = False,
+                    hooks = hook_fn,
                     validate_postprocess =  eval(state['validate_postprocess']))
     main.main()
     ## END Tutorial
@@ -262,6 +299,7 @@ if __name__=='__main__':
     # complete path to data (cluster specific)
     state['seqlen'] = 100
     state['path']= "/data/lisa/data/PennTreebankCorpus/pentree_char_and_word.npz"
+    state['dictionary']= "/data/lisa/data/PennTreebankCorpus/dictionaries.npz"
     state['chunks'] = 'chars'
     state['seed'] = 123
 
@@ -344,7 +382,7 @@ if __name__=='__main__':
     # memory keeping track of the training error (and other things) at each
     # step + the stdout becomes extremely large
     state['trainFreq'] = 100
-    state['hookFreq'] = 0
+    state['hookFreq'] = 1000
     state['validFreq'] = 1000
 
     state['saveFreq'] = 15 # save every 15 minutes
@@ -367,6 +405,8 @@ if __name__=='__main__':
 
     state['no_noise_bias'] = True # do not use weight noise for biases
     state['carry_h0'] = True # carry over h0 across updates
+
+    state['sample_steps'] = 80
 
     # Do not change these
     state['minerr'] = -1
