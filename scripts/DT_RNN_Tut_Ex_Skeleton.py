@@ -205,9 +205,9 @@ def jobman(state, channel):
     ### Neural Implementations of the Language Model
     #### Training
     if state['shortcut_inpout']:
-        additional_inputs = [shortcut(x)]
+        additional_inputs = [rec_layer, shortcut(x)]
     else:
-        additional_inputs = None
+        additional_inputs = [rec_layer]
 
     ##### Exercise (1): Compute the output intermediate layer
     ##### TODO: Compute the output intermediate layer
@@ -240,9 +240,9 @@ def jobman(state, channel):
     ##### TODO: Apply the dropout layer without noise
 
     if state['shortcut_inpout']:
-        additional_inputs=[shortcut(x, use_noise=False)]
+        additional_inputs=[rec_layer, shortcut(x, use_noise=False)]
     else:
-        additional_inputs=None
+        additional_inputs=[rec_layer]
     valid_model = output_layer(outhid,
             additional_inputs=additional_inputs,
             use_noise=False).validate(target=y, sum_over_time=True)

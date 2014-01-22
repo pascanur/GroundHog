@@ -7,8 +7,8 @@ outhid_activ = UnaryOp(activation=eval(state['dout_activ']))
 ##############
 emb_words_out = MultiLayer(
     rng,
-    nin=state['n_in'],
-    hid_sizes=eval(state['dout_nhid']),
+    n_in=state['n_in'],
+    n_hids=eval(state['dout_nhid']),
     activation=linear,
     init_fn='sample_weights_classic',
     weight_noise=state['weight_noise'],
@@ -23,16 +23,15 @@ emb_words_out = MultiLayer(
 outhid = outhid_dropout(outhid)
 
 ##############
-outhid_dropout = DropOp(dropout=.5, rng=rng)
-
+outhid_dropout = DropOp(dropout=state['dropout'], rng=rng)
 
 #############
 emb_state = MultiLayer(
     rng,
-    nin=eval(state['nhids'])[-1],
-    hid_sizes=eval(state['dout_nhid']),
+    n_in=eval(state['nhids'])[-1],
+    n_hids=eval(state['dout_nhid']),
     activation=linear,
-    init_fn='sample_weights_classic',
+    init_fn=eval(state['dout_init']),
     weight_noise=state['weight_noise'],
     scale=state['dout_scale'],
     sparsity=state['dout_sparse'],
