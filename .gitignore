@@ -36,6 +36,6 @@ nosetests.xml
 .pydevproject
 
 # saved files
-.npz
-.npy
-.pkl
+*.npz
+*.npy
+*.pkl
