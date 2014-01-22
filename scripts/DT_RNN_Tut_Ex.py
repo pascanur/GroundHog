@@ -446,7 +446,7 @@ if __name__=='__main__':
     # memory keeping track of the training error (and other things) at each
     # step + the stdout becomes extremely large
     state['trainFreq'] = 100
-    state['hookFreq'] = 1000
+    state['hookFreq'] = 5000
     state['validFreq'] = 1000
 
     state['saveFreq'] = 15 # save every 15 minutes
