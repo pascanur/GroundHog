@@ -63,7 +63,7 @@ class SGD(object):
                                     name=x.name) for x in model.inputs]
 
 	if 'profile' not in self.state:
-            self.state['profile'] = 1
+            self.state['profile'] = 0
 
         ###################################
         # Step 1. Compile training function
