@@ -331,8 +331,8 @@ if __name__=='__main__':
     state = {}
     # complete path to data (cluster specific)
     state['seqlen'] = 100
-    state['path']= "/data/lisa/data/PennTreebankCorpus/pentree_char_and_word.npz"
-    state['dictionary']= "/data/lisa/data/PennTreebankCorpus/dictionaries.npz"
+    state['path']= "/Users/KyunghyunCho/GroundHog/data/pentree_char_and_word.npz"
+    state['dictionary']= "/Users/KyunghyunCho/GroundHog/data/dictionaries.npz"
     state['chunks'] = 'chars'
     state['seed'] = 123
 
@@ -447,6 +447,8 @@ if __name__=='__main__':
 
     state['no_noise_bias'] = True # do not use weight noise for biases
     state['carry_h0'] = True # carry over h0 across updates
+
+    state['sample_steps'] = 80
 
     # Do not change these
     state['minerr'] = -1
