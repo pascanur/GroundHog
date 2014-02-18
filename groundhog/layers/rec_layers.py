@@ -487,7 +487,6 @@ class RecurrentMultiLayer(Layer):
 
         return self.out
 
-
 class RecurrentMultiLayerInp(RecurrentMultiLayer):
     """
     Similar to the RecurrentMultiLayer, with the exception that the input is
