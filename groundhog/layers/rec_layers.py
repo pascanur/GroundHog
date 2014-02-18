@@ -60,8 +60,11 @@ class RecurrentMultiLayer(Layer):
         :type n_in: int
         :param n_in: number of inputs units
 
-        :type n_hids: list of ints
-        :param n_hids: Number of hidden units on each layer of the MLP
+        :type n_hids: list of ints or list of pairs of ints
+        :param n_hids: Number of hidden units on each layer of the MLP; if a
+            pair, the first entry is the projection of the layer below, the
+            second value is the size of the layer after applying the
+            activation function
 
         :type activation: string/function or list of
         :param activation: Activation function for the embedding layers. If
@@ -118,6 +121,49 @@ class RecurrentMultiLayer(Layer):
 
         """
         self.grad_scale = grad_scale
+
+        if isinstance(n_hids, (str, unicode)):
+            n_hids = eval(n_hids)
+
+        if isinstance(lp_units, (str, unicode)):
+            lp_units = eval(lp_units)
+
+        if isinstance(init_power, (str, unicode)):
+            init_power = eval(init_power)
+
+        if isinstance(power_scale, (str, unicode)):
+            power_scale = eval(power_scale)
+
+        if isinstance(activation, (str, unicode)):
+            activation = eval(activation)
+
+        if isinstance(scale, (str, unicode)):
+            scale= eval(scale)
+
+        if isinstance(sparsity, (str, unicode)):
+            sparsity = eval(sparsity)
+
+        if isinstance(activ_noise, (str, unicode)):
+            activ_nosie = eval(activ_noise)
+
+        if isinstance(weight_noise, (str, unicode)):
+            weight_noise = eval(weight_noise)
+
+        if isinstance(dropout, (str, unicode)):
+            dropout = eval(dropout)
+
+        if isinstance(init_fn, (str, unicode)):
+            init_fn = eval(init_fn)
+
+        if isinstance(bias_fn, (str, unicode)):
+            bias_fn = eval(bias_fn)
+
+        if isinstance(bias_scale, (str, unicode)):
+            bias_scale = eval(bias_scale)
+
+        if isinstance(grad_scale, (str, unicode)):
+            grad_scale = eval(grad_scale)
+
         if type(n_hids) not in (list, tuple):
             n_hids = [n_hids]
         n_layers = len(n_hids)
