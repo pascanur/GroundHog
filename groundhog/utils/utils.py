@@ -83,6 +83,33 @@ def softmax(x):
         e = TT.exp(x)
         return e/ TT.sum(e)
 
+
+def powerup(x, p, shape):
+    eps = 1e-8
+    p_activ = TT.nnet.softplus(p) + 1
+    shape = x.shape
+
+    if x.ndim == 1:
+        x_pooled = TT.maximum(abs(x), eps).reshape(shape)**p_activ.dimshuffle(0, 'x')
+        x = x_pooled.sum(axis=1)
+        x = x**(numpy.array(1.0, dtype=theano.config.floatX) / p_activ)
+    elif x.ndim == 2:
+        x_pooled = TT.maximum(abs(x - c.dimshuffle('x',0)),
+                              eps).reshape([x.shape[0],] + list(shape))**p_activ.dimshuffle('x', 0, 'x')
+        x = x_pooled.sum(axis=2)
+        x = x**(numpy.array(1.0, dtype=theano.config.floatX) / p_activ.dimshuffle('x',0))
+    return x
+
+def maxout(x, shape):
+    if x.ndim == 1:
+        x = x.reshape(shape)
+        x = x.max(1)
+    else:
+        x = x.reshape([x.shape[0],]+list(shape))
+        x = x.max(2)
+    return x
+
+
 def sample_weights(sizeX, sizeY, sparsity, scale, rng):
     """
     Initialization that fixes the largest singular value.
@@ -114,6 +141,10 @@ def sample_weights_classic(sizeX, sizeY, sparsity, scale, rng):
 
 def init_bias(size, scale, rng):
     return numpy.ones((size,), dtype=theano.config.floatX)*scale
+
+def sample_power(size, scale, rng):
+    values = rng.normal(scale=scale, loc=0.5, size=(size,))
+    return values.astype(theano.config.floatX)
 
 def id_generator(size=5, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.choice(chars) for i in xrange(size))
