@@ -20,7 +20,10 @@ from groundhog import utils
 from groundhog.utils import sample_weights, \
             sample_weights_classic,\
             init_bias, \
-            constant_shape
+            constant_shape, \
+            powerup, \
+            maxout, \
+            sample_power
 from basic import Layer
 
 
@@ -32,6 +35,9 @@ class MultiLayer(Layer):
                  rng,
                  n_in,
                  n_hids=[500,500],
+                 lp_units = False,
+                 init_power = sample_power,
+                 power_scale=.1,
                  activation='TT.tanh',
                  scale=0.01,
                  sparsity=-1,
@@ -149,15 +155,26 @@ class MultiLayer(Layer):
             bias_fn = [bias_fn] * n_layers
         if init_fn not in (list, tuple):
             init_fn = [init_fn] * n_layers
+        if type(lp_units) not in (list, tuple):
+            lp_units = [lp_units] * n_layers
+        if type(init_power) not in (list, tuple):
+            init_power = [init_power] * n_layers
+        if type(power_scale) not in (list, tuple):
+            power_scale = [power_scale] * n_layers
 
         for dx in xrange(n_layers):
             if isinstance(bias_fn[dx],  (str, unicode)):
                 bias_fn[dx] = eval(bias_fn[dx])
             if isinstance(init_fn[dx], (str, unicode)):
                 init_fn[dx] = eval(init_fn[dx])
+            if type(init_power[dx]) is str or type(init_power[dx]) is unicode:
+                init_power[dx] = eval(init_power[dx])
             if isinstance(activation[dx], (str, unicode)):
                 activation[dx] = eval(activation[dx])
         super(MultiLayer, self).__init__(n_in, n_hids[-1], rng, name)
+        self.lp_units = lp_units
+        self.init_power = init_power
+        self.power_scale = power_scale
         self.trng = RandomStreams(self.rng.randint(int(1e6)))
         self.activation = activation
         self.scale = scale
@@ -179,14 +196,18 @@ class MultiLayer(Layer):
         """
         self.W_ems = []
         self.b_ems = []
+        self.lp_power = []
         if self.rank_n_approx:
+            n_out = n_hids[0]
+            if type(n_out) in (list, tuple):
+                n_out = n_out[0]
             W_em1 = self.init_fn[0](self.n_in,
                                  self.rank_n_approx,
                                  self.sparsity[0],
                                  self.scale[0],
                                  self.rng)
             W_em2 = self.init_fn[0](self.rank_n_approx,
-                                 self.n_hids[0],
+                                 n_out,
                                  self.sparsity[0],
                                  self.scale[0],
                                  self.rng)
@@ -197,8 +218,11 @@ class MultiLayer(Layer):
             self.W_ems = [self.W_em1, self.W_em2]
 
         else:
+            n_out = self.n_hids[0]
+            if type(n_out) in (list, tuple):
+                n_out = n_out[0]
             W_em = self.init_fn[0](self.n_in,
-                                self.n_hids[0],
+                                n_out,
                                 self.sparsity[0],
                                 self.scale[0],
                                 self.rng)
@@ -210,10 +234,25 @@ class MultiLayer(Layer):
             self.bias_fn[0](self.n_hids[0], self.bias_scale[0],self.rng),
             name='b_0_%s'%self.name)
         self.b_ems = [self.b_em]
+        if self.lp_units[0]:
+            p = theano.shared(self.init_power[0](n_out,
+                                                  self.power_scale[0],
+                                                  self.rng),
+                              name="p0_%s"%self.name)
+
+            self.lp_power.append(p)
+        else:
+            self.lp_power.append(None)
 
         for dx in xrange(1, self.n_layers):
-            W_em = self.init_fn[dx](self.n_hids[dx-1] / self.pieces[dx],
-                                self.n_hids[dx],
+            n_in = n_hids[(dx-1)%self.n_layers]
+            if type(n_in) in (list, tuple):
+                n_in = n_in[1]
+            n_out = self.n_hids[dx]
+            if type(n_out) in (list, tuple):
+                n_out = n_out[0]
+            W_em = self.init_fn[dx](n_in,
+                                n_out,
                                 self.sparsity[dx],
                                 self.scale[dx],
                                 self.rng)
@@ -225,8 +264,18 @@ class MultiLayer(Layer):
                 self.bias_fn[dx](self.n_hids[dx], self.bias_scale[dx],self.rng),
                 name='b_%d_%s'%(dx,self.name))
             self.b_ems += [b_em]
+            if self.lp_units[dx]:
+                p = theano.shared(self.init_power[dx](n_out,
+                                                      self.power_scale[dx],
+                                                      self.rng),
+                                  name="p%d_%s"%(dx,self.name))
 
-        self.params = [x for x in self.W_ems]
+                self.lp_power.append(p)
+            else:
+                self.lp_power.append(None)
+
+        self.params = [x for x in self.W_ems] + \
+                [x for x in self.lp_power if x is not None]
 
         if self.learn_bias and self.learn_bias!='last':
             self.params = [x for x in self.W_ems] + [x for x in self.b_ems]
@@ -277,7 +326,14 @@ class MultiLayer(Layer):
             st_pos = 0
 
 
-        emb_val = self.activation[0](emb_val)
+        if self.lp_units[0]:
+            # We are dealing with an lp unit that has additional arguments
+            emb_val = self.activation[0](emb_val, self.lp_power[0],
+                                        self.n_hids[0])
+        elif isinstance(self.n_hids[0], (list, tuple)):
+            emb_val = self.activation[0](emb_val, self.n_hids[0])
+        else:
+            emb_val = self.activation[0](emb_val)
 
         if self.dropout < 1.:
             if use_noise:
@@ -287,7 +343,13 @@ class MultiLayer(Layer):
         for dx in xrange(1, self.n_layers):
             emb_val = utils.dot(emb_val, W_ems[st_pos+dx])
             if b_ems:
-                emb_val = self.activation[dx](emb_val+ b_ems[dx])
+                emb_val = emb_val+ b_ems[dx]
+
+            if self.lp_units[dx]:
+                emb_val = self.activation[dx](emb_val, self.lp_power[dx],
+                                             self.n_hids[0])
+            elif isinstance(self.n_hids[dx], (list, tuple)):
+                emb_val = self.activation[dx](emb_val, self.n_hids[dx])
             else:
                 emb_val = self.activation[dx](emb_val)
 
