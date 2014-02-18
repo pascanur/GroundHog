@@ -136,6 +136,50 @@ class MultiLayer(Layer):
 
         if isinstance(rank_n_activ,  (str, unicode)):
             rank_n_activ = eval(rank_n_activ)
+
+        if isinstance(n_hids, (str, unicode)):
+            n_hids = eval(n_hids)
+
+        if isinstance(lp_units, (str, unicode)):
+            lp_units = eval(lp_units)
+
+        if isinstance(init_power, (str, unicode)):
+            init_power = eval(init_power)
+
+        if isinstance(power_scale, (str, unicode)):
+            power_scale = eval(power_scale)
+
+        if isinstance(activation, (str, unicode)):
+            activation = eval(activation)
+
+        if isinstance(scale, (str, unicode)):
+            scale= eval(scale)
+
+        if isinstance(sparsity, (str, unicode)):
+            sparsity = eval(sparsity)
+
+        if isinstance(weight_noise, (str, unicode)):
+            weight_noise = eval(weight_noise)
+
+        if isinstance(dropout, (str, unicode)):
+            dropout = eval(dropout)
+
+        if isinstance(init_fn, (str, unicode)):
+            init_fn = eval(init_fn)
+
+        if isinstance(bias_fn, (str, unicode)):
+            bias_fn = eval(bias_fn)
+
+        if isinstance(bias_scale, (str, unicode)):
+            bias_scale = eval(bias_scale)
+
+        if isinstance(grad_scale, (str, unicode)):
+            grad_scale = eval(grad_scale)
+
+        if isinstance(learn_bias, (str, unicode)):
+            learn_bias = eval(learn_bias)
+
+
         self.rank_n_activ = rank_n_activ
         if type(n_hids) not in (list, tuple):
             n_hids = [n_hids]
