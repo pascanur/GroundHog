@@ -22,7 +22,11 @@ from groundhog import utils
 from groundhog.utils import sample_weights, \
         sample_weights_classic,\
         init_bias, \
-        constant_shape
+        constant_shape, \
+        powerup, \
+        maxout, \
+        sample_power
+
 from basic import Layer
 
 class RecurrentMultiLayer(Layer):
@@ -34,6 +38,9 @@ class RecurrentMultiLayer(Layer):
     def __init__(self,
                  rng,
                  n_hids=[500,500],
+                 lp_units = False,
+                 init_power = sample_power,
+                 power_scale=.001,
                  activation = [TT.tanh, TT.tanh],
                  scale=.01,
                  sparsity = -1,
@@ -119,7 +126,10 @@ class RecurrentMultiLayer(Layer):
         if type(sparsity) not in (list, tuple):
             sparsity = [sparsity] * n_layers
         for idx, sp in enumerate(sparsity):
-            if sp < 0: sparsity[idx] = n_hids[idx]
+            if sp < 0:
+                sparsity[idx] = n_hids[idx]
+                if isinstance(sparsity[idx], (list, tuple)):
+                    sparsity[idx] = sparsity[idx][0]
         if type(activation) not in (list, tuple):
             activation = [activation] * n_layers
         if type(bias_scale) not in (list, tuple):
@@ -128,6 +138,12 @@ class RecurrentMultiLayer(Layer):
             bias_fn = [bias_fn] * (n_layers-1)
         if type(init_fn) not in (list, tuple):
             init_fn = [init_fn] * n_layers
+        if type(lp_units) not in (list, tuple):
+            lp_units = [lp_units] * n_layers
+        if type(init_power) not in (list, tuple):
+            init_power = [init_power] * n_layers
+        if type(power_scale) not in (list, tuple):
+            power_scale = [power_scale] * n_layers
 
         for dx in xrange(n_layers):
             if dx < n_layers-1:
@@ -135,8 +151,13 @@ class RecurrentMultiLayer(Layer):
                     bias_fn[dx] = eval(bias_fn[dx])
             if type(init_fn[dx]) is str or type(init_fn[dx]) is unicode:
                 init_fn[dx] = eval(init_fn[dx])
+            if type(init_power[dx]) is str or type(init_power[dx]) is unicode:
+                init_power[dx] = eval(init_power[dx])
             if type(activation[dx]) is str or type(activation[dx]) is unicode:
                 activation[dx] = eval(activation[dx])
+        self.lp_units = lp_units
+        self.init_power = init_power
+        self.power_scale = power_scale
         self.scale = scale
         self.n_layers = n_layers
         self.sparsity = sparsity
@@ -150,8 +171,14 @@ class RecurrentMultiLayer(Layer):
         self.profile = profile
         self.dropout = dropout
         assert rng is not None, "random number generator should not be empty!"
-        super(RecurrentMultiLayer, self).__init__(n_hids[0],
-                                                 n_hids[-1],
+        n_in = n_hids[0]
+        n_out = n_hids[-1]
+        if type(n_in) in (list, tuple):
+            n_in = n_in[0]
+        if type(n_out) in (list, tuple):
+            n_out = n_out[1]
+        super(RecurrentMultiLayer, self).__init__(n_in,
+                                                 n_out,
                                                  rng,
                                                  name)
 
@@ -162,23 +189,42 @@ class RecurrentMultiLayer(Layer):
     def _init_params(self):
         self.W_hhs = []
         self.b_hhs = []
+        self.lp_power = []
         for dx in xrange(self.n_layers):
-            W_hh = self.init_fn[dx](self.n_hids[(dx-1)%self.n_layers],
-                                        self.n_hids[dx],
-                                        self.sparsity[dx],
-                                        self.scale[dx],
-                                        rng=self.rng)
+            n_in = self.n_hids[(dx-1)%self.n_layers]
+            if type(n_in) in (list, tuple):
+                n_in = n_in[1]
+            n_out = self.n_hids[dx]
+            if type(n_out) in (list, tuple):
+                n_out = n_out[0]
+            W_hh = self.init_fn[dx](n_in,
+                                    n_out,
+                                    self.sparsity[dx],
+                                    self.scale[dx],
+                                    rng=self.rng)
             self.W_hhs.append(theano.shared(value=W_hh, name="W%d_%s" %
                                        (dx,self.name)))
+            if self.lp_units[dx]:
+                p = theano.shared(self.init_power[dx](self.n_hids[dx][1],
+                                                      self.power_scale[dx],
+                                                      self.rng),
+                                  name="p%d_%s"%(dx, self.name))
+
+                self.lp_power.append(p)
+            else:
+                self.lp_power.append(None)
             if dx > 0:
                 self.b_hhs.append(theano.shared(
-                    self.bias_fn[dx-1](self.n_hids[dx],
+                    self.bias_fn[dx-1](n_out,
                                        self.bias_scale[dx-1],
                                        self.rng),
                     name='b%d_%s' %(dx, self.name)))
-        self.params = [x for x in self.W_hhs] + [x for x in self.b_hhs]
+        self.params = [x for x in self.W_hhs] +\
+                [x for x in self.b_hhs] + \
+                [x for x in self.lp_power if x is not None]
         self.params_grad_scale = [self.grad_scale for x in self.params]
         if self.weight_noise:
+            # We do not use weight noise on the exponent of lp units !?
             self.nW_hhs = [theano.shared(x.get_value()*0, name='noise_'+x.name) for x in self.W_hhs]
             self.nb_hhs = [theano.shared(x.get_value()*0, name='noise_'+x.name) for x in self.b_hhs]
             self.noise_params = [x for x in self.nW_hhs] + [x for x in self.nb_hhs]
@@ -220,14 +266,21 @@ class RecurrentMultiLayer(Layer):
         if self.weight_noise and use_noise and self.noise_params:
             W_hhs = [(x+y) for x, y in zip(self.W_hhs, self.nW_hhs)]
             if not no_noise_bias:
-                b_hhs = [(x+y) for x, y in zip(self.b_hhs, self.nb_hss)]
+                b_hhs = [(x+y) for x, y in zip(self.b_hhs, self.nb_hhs)]
             else:
                 b_hhs = self.b_hhs
         else:
             W_hhs = self.W_hhs
             b_hhs = self.b_hhs
         preactiv = TT.dot(state_before, W_hhs[0]) +state_below
-        h = self.activation[0](preactiv)
+        if self.lp_units[0]:
+            # We are dealing with an lp unit that has additional arguments
+            h = self.activation[0](preactiv, self.lp_power[0],
+                                   self.n_hids[0])
+        elif isinstance(self.n_hids[0], (list, tuple)):
+            h = self.activation[0](preactiv, self.n_hids[0])
+        else:
+            h = self.activation[0](preactiv)
         if self.activ_noise and use_noise:
             h = h + self.trng.normal(h.shape, avg=0, std=self.activ_noise, dtype=h.dtype)
         if self.dropout < 1.:
@@ -244,7 +297,13 @@ class RecurrentMultiLayer(Layer):
         rval +=[h]
         for dx in xrange(1, self.n_layers):
             preactiv = TT.dot(h, W_hhs[dx]) + b_hhs[dx-1]
-            h = self.activation[dx](preactiv)
+            if self.lp_units[dx]:
+                h = self.activation[dx](preactiv, self.lp_power[dx],
+                                        self.n_hids[dx])
+            elif isinstance(self.n_hids[dx], (list, tuple)):
+                h = self.activation[dx](preactiv, self.n_hids[dx])
+            else:
+                h = self.activation[dx](preactiv)
 
             if self.activ_noise and use_noise:
                 h = h + self.trng.normal(h.shape, avg=0, std=self.activ_noise, dtype=h.dtype)
@@ -342,7 +401,13 @@ class RecurrentMultiLayer(Layer):
 
         if self.dropout < 1. and use_noise:
             # build dropout mask outside scan
-            allhid = numpy.sum(self.n_hids)
+            allhid = 0
+            for hid in self.n_hids:
+                if isinstance(hid, (list, tuple)):
+                    allhid += hid[0]
+                else:
+                    allhid += hid
+
             shape = state_below.shape
             if state_below.ndim == 3:
                 alldpmask = self.trng.binomial(
@@ -387,20 +452,37 @@ class RecurrentMultiLayerInp(RecurrentMultiLayer):
         self.W_hhs = []
         self.b_hhs = []
         for dx in xrange(self.n_layers):
-            W_hh = self.init_fn[dx](self.n_hids[(dx-1)%self.n_layers],
-                                        self.n_hids[dx],
-                                        self.sparsity[dx],
-                                        self.scale[dx],
-                                        rng=self.rng)
+            n_in = self.n_hids[(dx-1)%self.n_layers]
+            if type(n_in) in (list, tuple):
+                n_in = n_in[1]
+            n_out = self.n_hids[dx]
+            if type(n_out) in (list, tuple):
+                n_out = n_out[0]
+            W_hh = self.init_fn[dx](n_in,
+                                    n_out,
+                                    self.sparsity[dx],
+                                    self.scale[dx],
+                                    rng=self.rng)
             self.W_hhs.append(theano.shared(value=W_hh, name="W%d_%s" %
                                        (dx,self.name)))
+            if self.lp_units[dx]:
+                p = theano.shared(self.init_power[dx](self.n_hids[dx][1],
+                                                      self.power_scale[dx],
+                                                      self.rng),
+                                  name="p%d_%s"%(dx, self.name))
+
+                self.lp_power.append(p)
+            else:
+                self.lp_power.append(None)
             if dx < self.n_layers-1:
                 self.b_hhs.append(theano.shared(
                     self.bias_fn[dx](self.n_hids[dx],
                                        self.bias_scale[dx],
                                        self.rng),
                     name='b%d_%s' %(dx, self.name)))
-        self.params = [x for x in self.W_hhs] + [x for x in self.b_hhs]
+        self.params = [x for x in self.W_hhs] +\
+                [x for x in self.b_hhs] + \
+                [x for x in self.lp_power if x is not None]
         self.params_grad_scale = [self.grad_scale for x in self.params]
         self.restricted_params = [x for x in self.params]
         if self.weight_noise:
@@ -424,16 +506,22 @@ class RecurrentMultiLayerInp(RecurrentMultiLayer):
         rval = []
         if self.weight_noise and use_noise and self.noise_params:
             W_hhs = [(x+y) for x, y in zip(self.W_hhs,self.nW_hss)]
-            if not no_noise_bias:
+            if not no_noise_bias and self.weight_noise:
                 b_hhs = [(x+y) for x, y in zip(self.b_hhs,self.nb_hhs)]
             else:
                 b_hhs = self.b_hhs
         else:
             W_hhs = self.W_hhs
             b_hhs = self.b_hhs
-
-        h = self.activation[0](TT.dot(state_before,
-                                      W_hhs[0])+b_hhs[0])
+        preactiv = TT.dot(state_before, W_hhs[0]) + b_hhs[0]
+        if self.lp_units[0]:
+            # We are dealing with an lp unit that has additional arguments
+            h = self.activation[0](preactiv, self.lp_power[0],
+                                   self.n_hids[0])
+        elif isinstance(self.n_hids[0], (list, tuple)):
+            h = self.activation[0](preactiv, self.n_hids[0])
+        else:
+            h = self.activation[0](preactiv)
         if self.activ_noise and use_noise:
             h = h + self.trng.normal(h.shape, avg=0, std=self.activ_noise, dtype=h.dtype)
 
@@ -450,8 +538,15 @@ class RecurrentMultiLayerInp(RecurrentMultiLayer):
 
         rval += [h]
         for dx in xrange(1, self.n_layers-1):
-            h = self.activation[dx](TT.dot(h,
-                                           W_hhs[dx])+b_hhs[dx])
+            preactiv = TT.dot(h, W_hhs[dx]) + b_hhs[dx]
+            if self.lp_units[dx]:
+                h = self.activation[dx](preactiv, self.lp_power[dx],
+                                        self.n_hids[dx])
+            elif isinstance(self.n_hids[dx], (list, tuple)):
+                h = self.activation[dx](preactiv, self.n_hids[dx])
+            else:
+                h = self.activation[dx](preactiv)
+
             if self.activ_noise and use_noise:
                 h = h + self.trng.normal(h.shape, avg=0, std=self.activ_noise, dtype=h.dtype)
             if self.dropout < 1.:
@@ -465,7 +560,17 @@ class RecurrentMultiLayerInp(RecurrentMultiLayer):
                 else:
                     h = h * self.dropout
             rval += [h]
-        h = self.activation[-1](TT.dot(h, W_hhs[-1]) + state_below)
+
+        preactiv = TT.dot(state_before, W_hhs[-1]) + state_below
+        if self.lp_units[-1]:
+            # We are dealing with an lp unit that has additional arguments
+            h = self.activation[-1](preactiv, self.lp_power[-1],
+                                   self.n_hids[-1])
+        elif isinstance(self.n_hids[-1], (list, tuple)):
+            h = self.activation[-1](preactiv, self.n_hids[-1])
+        else:
+            h = self.activation[-1](preactiv)
+        #h = self.activation[-1](TT.dot(h, W_hhs[-1]) + state_below)
         if self.activ_noise and use_noise:
             h = h + self.trng.normal(h.shape, avg=0, std=self.activ_noise, dtype=h.dtype)
         if self.dropout < 1.:
@@ -731,25 +836,48 @@ class RecurrentMultiLayerShortPathInpAll(RecurrentMultiLayer):
     def _init_params(self):
         self.W_hhs = []
         self.W_shortp = []
+        self.lp_power = []
         for dx in xrange(self.n_layers):
-            W_hh = self.init_fn[dx](self.n_hids[(dx-1)%self.n_layers],
-                                        self.n_hids[dx],
-                                        self.sparsity[dx],
-                                        self.scale[dx],
-                                        rng=self.rng)
+            n_in = self.n_hids[(dx-1)%self.n_layers]
+            if type(n_in) in (list, tuple):
+                n_in = n_in[1]
+            n_out = self.n_hids[dx]
+            if type(n_out) in (list, tuple):
+                n_out = n_out[0]
+            W_hh = self.init_fn[dx](n_in,
+                                    n_out,
+                                    self.sparsity[dx],
+                                    self.scale[dx],
+                                    rng=self.rng)
             self.W_hhs.append(theano.shared(value=W_hh, name="W%d_%s" %
                                        (dx,self.name)))
 
+            if self.lp_units[dx]:
+                p = theano.shared(self.init_power[dx](self.n_hids[dx][1],
+                                                      self.power_scale[dx],
+                                                      self.rng),
+                                  name="p%d_%s"%(dx, self.name))
+
+                self.lp_power.append(p)
+            else:
+                self.lp_power.append(None)
             if dx > 0:
-                W_shp = self.init_fn[dx](self.n_hids[self.n_layers-1],
-                                         self.n_hids[dx],
+                n_in = self.n_hids[self.n_layers-1]
+                if type(n_in) in (list, tuple):
+                    n_in = n_in[1]
+                n_out = self.n_hids[dx]
+                if type(n_out) in (list, tuple):
+                    n_out = n_out[0]
+                W_shp = self.init_fn[dx](n_in,
+                                         n_out,
                                          self.sparsity[dx],
                                          self.scale[dx],
                                          rng=self.rng)
                 self.W_shortp.append(theano.shared(value=W_shp,
                                                name='W_s%d_%s'%(dx,self.name)))
         self.params = [x for x in self.W_hhs] +\
-                [x for x in self.W_shortp]
+                [x for x in self.W_shortp] +\
+                [x for x in self.lp_power if x is not None]
 
         self.params_grad_scale = [self.grad_scale for x in self.params]
         self.restricted_params = [x for x in self.params]
@@ -782,15 +910,32 @@ class RecurrentMultiLayerShortPathInpAll(RecurrentMultiLayer):
         def slice_state_below(dx, sb = state_below):
             st = 0
             for p in xrange(dx):
-                st += self.n_hids[p]
-            ed = st + self.n_hids[dx]
+                val = self.n_hids[p]
+                if isinstance(val, (list, tuple)):
+                     st += val[0]
+                else:
+                    st += val
+            val = self.n_hids[dx]
+            if isinstance(val, (list, tuple)):
+                ed = st + val[0]
+            else:
+                ed = st + val
             if sb.ndim == 1:
                 return sb[st:ed]
             else:
                 return sb[:,st:ed]
 
 
-        h = self.activation[0](TT.dot(state_before, W_hhs[0]) + slice_state_below(0))
+        preactiv = TT.dot(state_before, W_hhs[0]) + slice_state_below(0)
+
+        if self.lp_units[0]:
+            # We are dealing with an lp unit that has additional arguments
+            h = self.activation[0](preactiv, self.lp_power[0],
+                                   self.n_hids[0])
+        elif isinstance(self.n_hids[0], (list, tuple)):
+            h = self.activation[0](preactiv, self.n_hids[0])
+        else:
+            h = self.activation[0](preactiv)
 
         if self.activ_noise and use_noise:
             h = h + self.trng.normal(h.shape, avg=0, std=self.activ_noise, dtype=h.dtype)
@@ -808,9 +953,18 @@ class RecurrentMultiLayerShortPathInpAll(RecurrentMultiLayer):
 
         rval += [h]
         for dx in xrange(1, self.n_layers):
-            h = self.activation[dx](TT.dot(h, W_hhs[dx]) +
-                                    TT.dot(state_before, W_shp[dx-1]) +
-                                    slice_state_below(dx))
+            preactiv = TT.dot(h, W_hhs[dx]) + \
+                    TT.dot(state_before, W_shp[dx-1]) + \
+                    slice_state_below(dx)
+
+
+            if self.lp_units[dx]:
+                h = self.activation[dx](preactiv, self.lp_power[dx],
+                                        self.n_hids[dx])
+            elif isinstance(self.n_hids[dx], (list, tuple)):
+                h = self.activation[dx](preactiv, self.n_hids[dx])
+            else:
+                h = self.activation[dx](preactiv)
 
             if self.activ_noise and use_noise:
                 h = h + self.trng.normal(h.shape, avg=0, std=self.activ_noise, dtype=h.dtype)
