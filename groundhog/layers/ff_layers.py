@@ -304,7 +304,7 @@ class LastState(Layer):
     This layer is used to construct the embedding of the encoder by taking
     the last state of the recurrent model
     """
-    def __init__(self, ntimes = False, n = None):
+    def __init__(self, ntimes = False, n = TT.constant(0)):
         """
         :type ntimes: bool
         :param ntimes: If the last state needs to be repeated `n` times
@@ -318,13 +318,10 @@ class LastState(Layer):
 
     def fprop(self, all_states):
         if self.ntimes:
-            if self.n is None:
-                n = all_states.shape[0]
-            else:
-                n = self.n
-            shape0 = TT.maximum(all_states.shape[0], n)
+            stateshape0 = all_states.shape[0]
+            shape0 = TT.switch(TT.gt(self.n, 0), self.n, all_states.shape[0])
 
-            single_frame = TT.shape_padleft(all_states[shape0-1])
+            single_frame = TT.shape_padleft(all_states[stateshape0-1])
             mask = TT.alloc(numpy.float32(1), shape0, *[1 for k in xrange(all_states.ndim-1)])
             rval = single_frame * mask
             self.out = rval

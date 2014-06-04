@@ -132,8 +132,7 @@ class SGD(object):
             profile=self.state['profile'])
         print 'took', time.time() - st
 
-        #lr = TT.scalar('lr')
-        self.lr = numpy.float32(state['lr'])
+        self.lr = numpy.float32(1.)
         new_params = [p - (TT.sqrt(dn2 + eps) / TT.sqrt(gn2 + eps)) * g
                 for p, g, gn2, dn2 in
                 zip(model.params, self.gs, self.gnorm2, self.dnorm2)]
@@ -161,7 +160,16 @@ class SGD(object):
         self.prev_batch = None
 
     def __call__(self):
-        batch = self.data.next()
+        # for slow iterator
+        while True:
+            batch = self.data.next()
+            if batch:
+                self.prev_batch = batch
+                break
+            else:
+                if self.prev_batch:
+                    batch = self.prev_batch
+                    break
         # Perturb the data (! and the model)
         if isinstance(batch, dict):
             batch = self.model.perturb(**batch)

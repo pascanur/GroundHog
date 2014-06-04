@@ -1,4 +1,5 @@
-from rec_layers import RecurrentMultiLayer, \
+from rec_layers import RecurrentLayer, \
+        RecurrentMultiLayer, \
         RecurrentMultiLayerInp, \
         RecurrentMultiLayerShortPath, \
         RecurrentMultiLayerShortPathInp, \

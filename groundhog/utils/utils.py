@@ -112,6 +112,27 @@ def sample_weights_classic(sizeX, sizeY, sparsity, scale, rng):
         values[dx, perm[:sparsity]] = new_vals
     return values.astype(theano.config.floatX)
 
+def sample_weights_orth(sizeX, sizeY, sparsity, scale, rng):
+    sizeX = int(sizeX)
+    sizeY = int(sizeY)
+
+    assert sizeX == sizeY, 'for orthogonal init, sizeX == sizeY'
+
+    if sparsity < 0:
+        sparsity = sizeY
+    else:
+        sparsity = numpy.minimum(sizeY, sparsity)
+    values = numpy.zeros((sizeX, sizeY), dtype=theano.config.floatX)
+    for dx in xrange(sizeX):
+        perm = rng.permutation(sizeY)
+        new_vals = rng.normal(loc=0, scale=scale, size=(sparsity,))
+        values[dx, perm[:sparsity]] = new_vals
+
+    u,s,v = numpy.linalg.svd(values)
+    values = u * scale
+
+    return values.astype(theano.config.floatX)
+
 def init_bias(size, scale, rng):
     return numpy.ones((size,), dtype=theano.config.floatX)*scale
 

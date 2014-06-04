@@ -549,7 +549,6 @@ class Operator(Layer):
         self.params = rval.params
         self.noise_params = rval.noise_params
         self.noise_params_shape_fn = rval.noise_params_shape_fn
-        self.params_shape = rval.params_shape
         self.params_grad_scale = rval.params_grad_scale
 
         self.inputs = rval.inputs
