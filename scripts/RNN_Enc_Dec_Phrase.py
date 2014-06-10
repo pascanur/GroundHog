@@ -27,12 +27,41 @@ import sys
 import cPickle as pkl
 
 theano.config.allow_gc = True
+rect = 'lambda x:x*(x>0)'
+htanh = 'lambda x:x*(x>-1)*(x<1)'
 
 def get_data(state):
     rng = numpy.random.RandomState(123)
+
     def out_format (x, y, new_format=None):
+        """A callback given to the iterator to transform data in suitable format
+
+        :type x: list
+        :param x: list of numpy.array's, each array is a batch of phrases
+            in some of source languages
+
+        :type y: list
+        :param y: same as x but for target languages
+
+        :param new_format: a wrapper to be applied on top of returned value
+
+        :returns: a tuple (X, Xmask, Y, Ymask) where
+            - X is a matrix, each column contains a source sequence
+            - Xmask is 0-1 matrix, each column marks the sequence positions in X
+            - Y and Ymask are matrices of the same format for target sequences
+            OR new_format applied to the tuple
+
+        Notes:
+        * actually works only with x[0] and y[0]
+        * len(x[0]) thus is just the minibatch size
+        * len(x[0][idx]) is the size of sequence idx
+        """
+
+        # Similar length for all source sequences
         mx = numpy.minimum(state['seqlen'], max([len(xx) for xx in x[0]]))+1
+        # Similar length for all target sequences
         my = numpy.minimum(state['seqlen'], max([len(xx) for xx in y[0]]))+1
+        # Just batch size
         n = state['bs'] # FIXME: may become inefficient later with a large minibatch
 
         X = numpy.zeros((mx, n), dtype='int64')
@@ -41,8 +70,12 @@ def get_data(state):
         Xmask = numpy.zeros((mx, n), dtype='float32')
         Ymask = numpy.zeros((my, n), dtype='float32')
 
+        # Fill X and Xmask
         for idx in xrange(len(x[0])):
+            # Insert sequence idx in a column of matrix X
             if mx < len(x[0][idx]):
+                # If sequence idx it too long,
+                # we either choose random subsequence or just take a prefix
                 if state['randstart']:
                     stx = numpy.random.randint(0, len(x[0][idx]) - mx)
                 else:
@@ -50,12 +83,18 @@ def get_data(state):
                 X[:mx, idx] = x[0][idx][stx:stx+mx]
             else:
                 X[:len(x[0][idx]), idx] = x[0][idx][:mx]
+
+            # Mark the end of phrase
             if len(x[0][idx]) < mx:
                 X[len(x[0][idx]):, idx] = state['null_sym_source']
+
+            # Initialize Xmask column with ones in all positions that
+            # were just set in X
             Xmask[:len(x[0][idx]), idx] = 1.
             if len(x[0][idx]) < mx:
                 Xmask[len(x[0][idx]), idx] = 1.
 
+        # Fill Y and Ymask in the same way as X and Xmask in the previous loop
         for idx in xrange(len(y[0])):
             Y0[:len(y[0][idx]), idx] = y[0][idx][:my]
             if len(y[0][idx]) < my:
@@ -68,6 +107,10 @@ def get_data(state):
 
         null_inputs = numpy.zeros(X.shape[1])
 
+        # We say that an input pair is valid if both:
+        # - either source sequence or target sequence is non-empty
+        # - source sequence and target sequence have null_sym ending
+        # Why did not we filter them earlier?
         for idx in xrange(X.shape[1]):
             if numpy.sum(Xmask[:,idx]) == 0 and numpy.sum(Ymask[:,idx]) == 0:
                 null_inputs[idx] = 1
@@ -78,6 +121,7 @@ def get_data(state):
 
         valid_inputs = 1. - null_inputs
 
+        # Leave only valid inputs
         X = X[:,valid_inputs.nonzero()[0]]
         Y = Y[:,valid_inputs.nonzero()[0]]
         Y0 = Y0[:,valid_inputs.nonzero()[0]]
@@ -94,6 +138,7 @@ def get_data(state):
             Xmask = Xmask[:,0]
             Ymask = Ymask[:,0]
         if new_format:
+            # Are Y and Y0 different?
             return new_format(X, Xmask, Y0, Y, Ymask)
         else:
             return X, Xmask, Y, Ymask
@@ -102,32 +147,21 @@ def get_data(state):
             'y': y0, 'y_mask' : ym}
 
     train_data = TMIteratorPytables(
-        batch_size = int(state['bs']),
-        target_lfiles = state['target'],
-        source_lfiles = state['source'],
-        output_format = lambda *args : out_format(*args,
+        batch_size=int(state['bs']),
+        target_lfiles=state['target'],
+        source_lfiles=state['source'],
+        output_format=lambda *args : out_format(*args,
                                                   new_format=new_format),
-        can_fit = False,
-        queue_size = 10,
-        cache_size = 10,
-        shuffle = True)
+        can_fit=False,
+        queue_size=10,
+        cache_size=10,
+        shuffle=True)
 
     valid_data = None
     test_data = None
     return train_data, valid_data, test_data
 
-rect = 'lambda x:x*(x>0)'
-htanh = 'lambda x:x*(x>-1)*(x<1)'
-
 def jobman(state, channel):
-    # load dataset
-    state['null_sym_source'] = 15000 
-    state['null_sym_target'] = 15000
-    state['n_sym_source'] = state['null_sym_source'] + 1
-    state['n_sym_target'] = state['null_sym_target'] + 1
-
-    state['nouts'] = state['n_sym_target']
-    state['nins'] = state['n_sym_source']
     rng = numpy.random.RandomState(state['seed'])
     if state['loopIters'] > 0:
         train_data, valid_data, test_data = get_data(state)
@@ -154,9 +188,12 @@ def jobman(state, channel):
     # 2. Layers and Operators
     bs = state['bs']
 
+    # Dimensionality of word embedings.
+    # The same as state['dim'] and in fact equals the number of hidden units.
     embdim = state['dim_mlp']
 
     # Source Sentence
+    # Low-rank embeddings
     emb = MultiLayer(
         rng,
         n_in=state['nins'],
@@ -172,7 +209,9 @@ def jobman(state, channel):
         gater_words = []
     if state['rec_reseting']:
         reseter_words = []
+    # si always stands for the number in stack of RNNs (which is actually 1)
     for si in xrange(state['encoder_stack']):
+        # In paper it is multiplication by W
         emb_words.append(MultiLayer(
             rng,
             n_in=state['rank_n_approx'],
@@ -182,6 +221,7 @@ def jobman(state, channel):
             weight_noise=state['weight_noise'],
             scale=state['weight_scale'],
             name='emb_words_%d'%si))
+        # In paper it is multiplication by W_z
         if state['rec_gating']:
             gater_words.append(MultiLayer(
                 rng,
@@ -193,6 +233,7 @@ def jobman(state, channel):
                 scale=state['weight_scale'],
                 learn_bias = False,
                 name='gater_words_%d'%si))
+        # In paper it is multiplication by W_r
         if state['rec_reseting']:
             reseter_words.append(MultiLayer(
                 rng,
@@ -231,7 +272,7 @@ def jobman(state, channel):
                     init_fn=state['weight_init_fn'],
                     weight_noise=state['weight_noise'],
                     scale=state['weight_scale'],
-                    learn_bias = False, 
+                    learn_bias=False,
                     name='rec_proj_gater_%d'%si))
             if state['rec_reseting']:
                 rec_proj_reseter.append(MultiLayer(
@@ -242,9 +283,10 @@ def jobman(state, channel):
                     init_fn=state['weight_init_fn'],
                     weight_noise=state['weight_noise'],
                     scale=state['weight_scale'],
-                    learn_bias = False, 
+                    learn_bias=False,
                     name='rec_proj_reseter_%d'%si))
 
+        # This should be U from paper
         add_rec_step.append(eval(state['rec_layer'])(
                 rng,
                 n_hids=state['dim'],
@@ -260,16 +302,16 @@ def jobman(state, channel):
                 reseter_activation=state['rec_reseter'],
                 name='add_h_%d'%si))
 
-    def _add_op(words_embeddings, 
+    def _add_op(words_embeddings,
                 words_mask=None,
                 prev_val=None,
-                si = 0, 
+                si = 0,
                 state_below = None,
                 gater_below = None,
                 reseter_below = None,
-                one_step=False, 
-                bs=1, 
-                init_state=None, 
+                one_step=False,
+                bs=1,
+                init_state=None,
                 use_noise=True):
         seqlen = words_embeddings.out.shape[0]//bs
         rval = words_embeddings
@@ -280,19 +322,19 @@ def jobman(state, channel):
         if state['rec_reseting']:
             reseter = reseter_below
         if si > 0:
-            rval += rec_proj[si-1](state_below, one_step=one_step, 
+            rval += rec_proj[si-1](state_below, one_step=one_step,
                     use_noise=use_noise)
             if state['rec_gating']:
-                projg = rec_proj_gater[si-1](state_below, one_step=one_step, 
+                projg = rec_proj_gater[si-1](state_below, one_step=one_step,
                         use_noise = use_noise)
                 if gater: gater += projg
                 else: gater = projg
             if state['rec_reseting']:
-                projg = rec_proj_reseter[si-1](state_below, one_step=one_step, 
+                projg = rec_proj_reseter[si-1](state_below, one_step=one_step,
                         use_noise = use_noise)
                 if reseter: reseter += projg
                 else: reseter = projg
-            
+
         if not one_step:
             rval= add_rec_step[si](
                 rval,
@@ -305,6 +347,7 @@ def jobman(state, channel):
                 init_state=init_state,
                 use_noise = use_noise)
         else:
+            #Here we link the Encoder part
             rval= add_rec_step[si](
                 rval,
                 mask=words_mask,
@@ -372,6 +415,7 @@ def jobman(state, channel):
     if state['rec_reseting']:
         reseter_everything_t = []
     for si in xrange(state['decoder_stack']):
+        # This stands for the matrix C from the text
         proj_everything_t.append(MultiLayer(
             rng,
             n_in=state['dim'],
@@ -445,6 +489,7 @@ def jobman(state, channel):
                     learn_bias=False,
                     name='rec_proj_t_reseter_%d'%si))
 
+        # This one stands for gating, resetting and applying non-linearity in Decoder
         add_rec_step_t.append(eval(state['rec_layer'])(
                 rng,
                 n_hids=state['dim'],
@@ -474,11 +519,12 @@ def jobman(state, channel):
                 name='encoder_proj_%d'%si,
                 learn_bias = (si == 0)))
 
-        encoder_act_layer = UnaryOp(activation=eval(state['unary_activ']), 
-                indim = indim, pieces = pieces, rng=rng)
+        encoder_act_layer = UnaryOp(activation=eval(state['unary_activ']),
+                indim=indim, pieces=pieces, rng=rng)
 
+    # Actually add target opp
     def _add_t_op(words_embeddings, everything = None, words_mask=None,
-                prev_val=None,one_step=False, bs=1, 
+                prev_val=None,one_step=False, bs=1,
                 init_state=None, use_noise=True,
                 gater_below = None,
                 reseter_below = None,
@@ -495,15 +541,15 @@ def jobman(state, channel):
         if si > 0:
             if isinstance(state_below, list):
                 state_below = state_below[-1]
-            rval += rec_proj_t[si-1](state_below, 
+            rval += rec_proj_t[si-1](state_below,
                     one_step=one_step, use_noise=use_noise)
             if state['rec_gating']:
-                projg = rec_proj_t_gater[si-1](state_below, one_step=one_step, 
+                projg = rec_proj_t_gater[si-1](state_below, one_step=one_step,
                         use_noise = use_noise)
                 if gater: gater += projg
                 else: gater = projg
             if state['rec_reseting']:
-                projg = rec_proj_t_reseter[si-1](state_below, one_step=one_step, 
+                projg = rec_proj_t_reseter[si-1](state_below, one_step=one_step,
                         use_noise = use_noise)
                 if reseter: reseter += projg
                 else: reseter = projg
@@ -526,18 +572,19 @@ def jobman(state, channel):
                 mask=words_mask,
                 one_step=one_step,
                 init_state=init_state,
-                gater_below = gater,
-                reseter_below = reseter,
-                use_noise = use_noise)
+                gater_below=gater,
+                reseter_below=reseter,
+                use_noise=use_noise)
         else:
+            # Here we link the Decoder part
             rval = add_rec_step_t[si](
                 rval,
                 mask=words_mask,
                 state_before=prev_val,
                 one_step=one_step,
-                gater_below = gater,
-                reseter_below = reseter,
-                use_noise = use_noise)
+                gater_below=gater,
+                reseter_below=reseter,
+                use_noise=use_noise)
         return rval
     add_t_op = Operator(_add_t_op)
 
@@ -615,7 +662,7 @@ def jobman(state, channel):
         indim = 0
         pieces = 0
         act_layer = UnaryOp(activation=eval(state['unary_activ']))
-        drop_layer = DropOp(rng=rng, dropout=state['dropout'])
+        drop_layer = DropOp(rng=rng, dropout=stat
 
     if state['deep_out']:
         indim = state['dim_mlp'] / state['maxout_part']
@@ -627,10 +674,10 @@ def jobman(state, channel):
         rank_n_activ = None
     output_layer = SoftmaxLayer(
             rng,
-            indim, 
+            indim,
             state['nouts'],
             state['weight_scale'],
-            -1, 
+            -1,
             rank_n_approx = rank_n_approx,
             rank_n_activ = rank_n_activ,
             weight_noise=state['weight_noise'],
@@ -671,10 +718,10 @@ def jobman(state, channel):
         if word and state['bigram']:
             if one_step:
                 if state['mult_out']:
-                    rval *= proj_word(emb_t(word, use_noise=use_noise), 
+                    rval *= proj_word(emb_t(word, use_noise=use_noise),
                             one_step=one_step, use_noise=use_noise)
                 else:
-                    rval += proj_word(emb_t(word, use_noise=use_noise), 
+                    rval += proj_word(emb_t(word, use_noise=use_noise),
                             one_step=one_step, use_noise=use_noise)
             else:
                 if isinstance(word, TT.TensorVariable):
@@ -683,7 +730,7 @@ def jobman(state, channel):
                 else:
                     shape = word.shape
                     ndim = word.out.ndim
-                pword = proj_word(emb_t(word, use_noise=use_noise), 
+                pword = proj_word(emb_t(word, use_noise=use_noise),
                         one_step=one_step, use_noise=use_noise)
                 shape_pword = pword.shape
                 if ndim == 1:
@@ -707,8 +754,8 @@ def jobman(state, channel):
     reseter_below = None
     if state['rec_reseting']:
         reseter_below = reseter_words[0](emb(x))
-    encoder_acts = [add_op(emb_words[0](emb(x)), x_mask, 
-        bs=x_mask.shape[1], 
+    encoder_acts = [add_op(emb_words[0](emb(x)), x_mask,
+        bs=x_mask.shape[1],
         si=0, gater_below=gater_below, reseter_below=reseter_below)]
     if state['encoder_stack'] > 1:
         everything = encoder_proj[0](last(encoder_acts[-1]))
@@ -719,9 +766,9 @@ def jobman(state, channel):
         reseter_below = None
         if state['rec_reseting']:
             reseter_below = reseter_words[si](emb(x))
-        encoder_acts.append(add_op(emb_words[si](emb(x)), 
-                x_mask, bs=x_mask.shape[1], 
-                si=si, state_below=encoder_acts[-1], 
+        encoder_acts.append(add_op(emb_words[si](emb(x)),
+                x_mask, bs=x_mask.shape[1],
+                si=si, state_below=encoder_acts[-1],
                 gater_below=gater_below,
                 reseter_below=reseter_below))
         if state['encoder_stack'] > 1:
@@ -755,12 +802,12 @@ def jobman(state, channel):
     reseter_below = None
     if state['rec_reseting']:
         reseter_below = reseter_words_t[0](emb_t(y0))
-    has_said = [add_t_op(emb_words_t[0](emb_t(y0)), 
+    has_said = [add_t_op(emb_words_t[0](emb_t(y0)),
             everything,
-            y_mask, bs=y_mask.shape[1], 
+            y_mask, bs=y_mask.shape[1],
             gater_below = gater_below,
             reseter_below = reseter_below,
-            init_state=init_state[0], 
+            init_state=init_state[0],
             si=0)]
     for si in xrange(1,state['decoder_stack']):
         gater_below = None
@@ -769,14 +816,16 @@ def jobman(state, channel):
         reseter_below = None
         if state['rec_reseting']:
             reseter_below = reseter_words_t[si](emb_t(y0))
-        has_said.append(add_t_op(emb_words_t[si](emb_t(y0)), 
+        has_said.append(add_t_op(emb_words_t[si](emb_t(y0)),
                 everything,
-                y_mask, bs=y_mask.shape[1], 
+                y_mask, bs=y_mask.shape[1],
                 state_below = has_said[-1],
                 gater_below = gater_below,
                 reseter_below = reseter_below,
-                init_state=init_state[si], 
+                init_state=init_state[si],
                 si=si))
+
+    # has_said are hidden layer states
 
     if has_said[0].out.ndim < 3:
         for si in xrange(state['decoder_stack']):
@@ -811,9 +860,9 @@ def jobman(state, channel):
     reseter_below = None
     if state['rec_reseting']:
         reseter_below = reseter_words[0](emb(x))
-    encoder_acts = [add_op(emb_words[0](emb(x),use_noise=False), 
-            si=0, 
-            use_noise=False, 
+    encoder_acts = [add_op(emb_words[0](emb(x),use_noise=False),
+            si=0,
+            use_noise=False,
             gater_below=gater_below,
             reseter_below=reseter_below)]
     if state['encoder_stack'] > 1:
@@ -825,10 +874,10 @@ def jobman(state, channel):
         reseter_below = None
         if state['rec_reseting']:
             reseter_below = reseter_words[si](emb(x))
-        encoder_acts.append(add_op(emb_words[si](emb(x),use_noise=False), 
-                si=si, 
+        encoder_acts.append(add_op(emb_words[si](emb(x),use_noise=False),
+                si=si,
                 state_below=encoder_acts[-1], use_noise=False,
-                gater_below = gater_below, 
+                gater_below = gater_below,
                 reseter_below = reseter_below))
         if state['encoder_stack'] > 1:
             everything += encoder_proj[si](last(encoder_acts[-1]), use_noise=False)
@@ -841,7 +890,7 @@ def jobman(state, channel):
     init_state = []
     for si in xrange(state['decoder_stack']):
         if state['bias_code']:
-            init_state.append(TT.reshape(bias_code[si](everything, 
+            init_state.append(TT.reshape(bias_code[si](everything,
                 use_noise=False), [1, state['dim']]))
         else:
             init_state.append(TT.alloc(numpy.float32(0), 1, state['dim']))
@@ -861,12 +910,12 @@ def jobman(state, channel):
         aidx += 1; ctx = args[aidx]
         if state['avg_word']:
             aidx += 1; awrd = args[aidx]
-        
+
         val = pop_op(proj_code(ctx), has_said_tm1, word=word_tm1,
                 aword=awrd, one_step=True, use_noise=False)
         sample = output_layer.get_sample(state_below=val, temp=temp)
         logp = output_layer.get_cost(
-                state_below=val.out.reshape([1, TT.cast(output_layer.n_in, 'int64')]), 
+                state_below=val.out.reshape([1, TT.cast(output_layer.n_in, 'int64')]),
                 temp=temp, target=sample.reshape([1,1]), use_noise=False)
         gater_below = None
         if state['rec_gating']:
@@ -874,9 +923,9 @@ def jobman(state, channel):
         reseter_below = None
         if state['rec_reseting']:
             reseter_below = reseter_words_t[0](emb_t(sample))
-        has_said_t = [add_t_op(emb_words_t[0](emb_t(sample)), 
+        has_said_t = [add_t_op(emb_words_t[0](emb_t(sample)),
                 ctx,
-                prev_val=has_said_tm1[0], 
+                prev_val=has_said_tm1[0],
                 gater_below=gater_below,
                 reseter_below=reseter_below,
                 one_step=True, use_noise=True,
@@ -888,9 +937,9 @@ def jobman(state, channel):
             reseter_below = None
             if state['rec_reseting']:
                 reseter_below = reseter_words_t[si](emb_t(sample))
-            has_said_t.append(add_t_op(emb_words_t[si](emb_t(sample)), 
+            has_said_t.append(add_t_op(emb_words_t[si](emb_t(sample)),
                     ctx,
-                    prev_val=has_said_tm1[si], 
+                    prev_val=has_said_tm1[si],
                     gater_below=gater_below,
                     reseter_below=reseter_below,
                     one_step=True, use_noise=True,
@@ -924,16 +973,16 @@ def jobman(state, channel):
         profile=False, name='sample_fn')
 
     model = LM_Model(
-        cost_layer = nll,
+        cost_layer=nll,
         weight_noise_amount=state['weight_noise_amount'],
-        valid_fn = valid_fn,
-        sample_fn  = sample_fn,
+        valid_fn=valid_fn,
+        sample_fn=sample_fn,
         clean_before_noise_fn = False,
-        noise_fn = noise_fn,
+        noise_fn=noise_fn,
         indx_word=state['indx_word_target'],
         indx_word_src=state['indx_word'],
-        character_level = False,
-        rng = rng)
+        character_level=False,
+        rng=rng)
 
     if state['loopIters'] > 0: algo = SGD(model, state, train_data)
     else: algo = None
@@ -1049,17 +1098,34 @@ if __name__=='__main__':
 
     state = {}
 
-    state['target'] = ["/data/lisatmp3/chokyun/mt/joint_paper_hs/phrase_table.fr.h5"]
-    state['source'] = ["/data/lisatmp3/chokyun/mt/joint_paper_hs/phrase_table.en.h5"]
-    # target only
+    state['source'] = ["/data/lisatmp3/chokyun/mt/phrase_table.en.h5"]
+    state['target'] = ["/data/lisatmp3/chokyun/mt/phrase_table.fr.h5"]
     state['indx_word'] = "/data/lisatmp3/chokyun/mt/ivocab_source.pkl"
     state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/ivocab_target.pkl"
     state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.en.pkl"
     state['oov'] = 'UNK'
+    # TODO: delete this one
+    state['randstart'] = False
 
+    # These are end-of-sequence marks
+    state['null_sym_source'] = 15000
+    state['null_sym_target'] = 15000
+
+    # These are vocabulary sizes for the source and target languages
+    state['n_sym_source'] = state['null_sym_source'] + 1
+    state['n_sym_target'] = state['null_sym_target'] + 1
+
+    # These are the number of input and output units
+    state['nouts'] = state['n_sym_target']
+    state['nins'] = state['n_sym_source']
+
+    # This is for predicting the next target from the current one
     state['bigram'] = True
 
+    # This for the hidden state initilization
     state['bias_code'] = True
+
+    # This is for the input -> output shortcut
     state['avg_word'] = True
 
     def maxout(x):
@@ -1078,9 +1144,11 @@ if __name__=='__main__':
 
     state['eps'] = 1e-10
 
-    state['dim'] = 1000 
-    state['dim_mlp'] = state['dim'] 
+    # Dimensionality of hidden layers
+    state['dim'] = 1000
+    state['dim_mlp'] = state['dim']
 
+    # Size of hidden layers' stack in encoder and decoder
     state['encoder_stack'] = 1
     state['decoder_stack'] = 1
 
@@ -1088,69 +1156,103 @@ if __name__=='__main__':
     state['mult_out'] = False
 
     state['rank_n_approx'] = 100
-    state['rank_n_activ'] = 'lambda x: x' 
+    state['rank_n_activ'] = 'lambda x: x'
 
+    # Hidden layer configuration
     state['rec_layer'] = 'RecurrentLayer'
     state['rec_gating'] = True
     state['rec_reseting'] = True
     state['rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
     state['rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
 
+    # Hidden-to-hidden activation function
     state['activ'] = 'lambda x: TT.tanh(x)'
+
+    # This one is bias applied in the recurrent layer. It is likely
+    # to be zero as MultiLayer already has bias.
     state['bias'] = 0.
+
+    # This one is bias at the projection stage
+    # TODO fully get what is it needed for
     state['bias_mlp'] = 0.
 
+    # Specifiying the output layer
     state['maxout_part'] = 2.
-    state["unary_activ"] = 'maxout' 
+    state['unary_activ'] = 'maxout'
 
+    # Weight initialization parameters
     state['rec_weight_init_fn'] = 'sample_weights_orth'
     state['weight_init_fn'] = 'sample_weights_classic'
     state['rec_weight_scale'] = 1.
     state['weight_scale'] = 0.01
 
-    state['dropout'] = 1. # no dropout
-    state['dropout_rec'] = 1. # no dropout
+    # Dropout in output layer
+    state['dropout'] = 1.
+    # Dropout in recurrent layers
+    state['dropout_rec'] = 1.
 
+    # Random weight noise regularization settings
     state['weight_noise'] = False
     state['weight_noise_rec'] = False
-    state['weight_noise_amount'] = 0.01 
+    state['weight_noise_amount'] = 0.01
 
+    # Threshold to cut the gradient
     state['cutoff'] = 1.
+    # TODO: what does it do?
     state['cutoff_rescale_length'] = 0.
 
+    # Adagrad setting
     state['adarho'] = 0.95
     state['adaeps'] = 1e-6
 
+    # Learning rate stuff, not used in Adagrad
     state['patience'] = 1
     state['lr'] = 1.
     state['minlr'] = 0
 
+    # Batch size
     state['bs']  = 64
+    # TODO: not used???
     state['vbs'] = 64
-    state['reset'] = -1
-    state['seqlen'] = 30 # maximum sequence length
-    state['randstart'] = False
+    # Maximum sequence length
+    state['seqlen'] = 30
 
+    # Sampling hook settings
     state['sample_reset'] = False
     state['sample_n'] = 1
     state['sample_max'] = 3
 
-    state['reload'] = False
-    state['loopIters'] = 50000000
-    state['timeStop'] = 24*60*7
-    state['minerr'] = -1
-
+    # Starts a funny sampling regime
     state['sampler_test'] = True
     state['seed'] = 1234
 
-    state['trainFreq'] = 1
-    state['hookFreq'] = 100
-    state['validFreq'] = 500
-    state['saveFreq'] = 60 #min
+    # Specifies whether old model should be reloaded first
+    state['reload'] = False
 
+    # Number of batches to process
+    state['loopIters'] = 50000000
+    # Maximum number of minutes to run
+    state['timeStop'] = 24*60*7
+    # Error level to stop at
+    state['minerr'] = -1
+
+    # Resetting data iterator during training
+    state['reset'] = -1
+
+    # Frequency of training error reports (in number of batches)
+    state['trainFreq'] = 1
+    # Frequency of running hooks
+    state['hookFreq'] = 100
+    # Validation frequency
+    state['validFreq'] = 500
+    # Model saving frequency (in minutes)
+    state['saveFreq'] = 5
+
+    # Turns on profiling of training phase
     state['profile'] = 0
 
     state['prefix'] = 'model_phrase_'
+    # When set to 0 each new model dump will be saved in a new file
     state['overwrite'] = 1
     jobman(state, None)
 
