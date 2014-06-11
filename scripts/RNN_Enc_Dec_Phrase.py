@@ -23,10 +23,16 @@ import numpy
 import theano
 import theano.tensor as TT
 import sys
+import logging
 
 import cPickle as pkl
 
 theano.config.allow_gc = True
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+logger.setLevel(logging.INFO)
+
 rect = 'lambda x:x*(x>0)'
 htanh = 'lambda x:x*(x>-1)*(x<1)'
 
@@ -155,13 +161,28 @@ def get_data(state):
         can_fit=False,
         queue_size=10,
         cache_size=10,
-        shuffle=True)
+        shuffle=state['shuffle'])
 
     valid_data = None
     test_data = None
     return train_data, valid_data, test_data
 
-def jobman(state, channel):
+def do_experiment(state, channel):
+    def maxout(x):
+        shape = x.shape
+        if x.ndim == 1:
+            shape1 = TT.cast(shape[0] / state['maxout_part'], 'int64')
+            shape2 = TT.cast(state['maxout_part'], 'int64')
+            x = x.reshape([shape1, shape2])
+            x = x.max(1)
+        else:
+            shape1 = TT.cast(shape[1] / state['maxout_part'], 'int64')
+            shape2 = TT.cast(state['maxout_part'], 'int64')
+            x = x.reshape([shape[0], shape1, shape2])
+            x = x.max(2)
+        return x
+
+    logger.info("Start loading")
     rng = numpy.random.RandomState(state['seed'])
     if state['loopIters'] > 0:
         train_data, valid_data, test_data = get_data(state)
@@ -170,8 +191,7 @@ def jobman(state, channel):
         valid_data = None
         test_data = None
 
-    ########### Training graph #####################
-    ## 1. Inputs
+    logger.info("Build layers")
     if state['bs'] == 1:
         x = TT.lvector('x')
         x_mask = TT.vector('x_mask')
@@ -185,14 +205,13 @@ def jobman(state, channel):
         y0 = y
         y_mask = TT.matrix('y_mask')
 
-    # 2. Layers and Operators
     bs = state['bs']
 
     # Dimensionality of word embedings.
     # The same as state['dim'] and in fact equals the number of hidden units.
     embdim = state['dim_mlp']
 
-    # Source Sentence
+    logger.info("Source sentence")
     # Low-rank embeddings
     emb = MultiLayer(
         rng,
@@ -360,7 +379,7 @@ def jobman(state, channel):
         return rval
     add_op = Operator(_add_op)
 
-    # Target Sentence
+    logger.info("Target sequence")
     emb_t = MultiLayer(
         rng,
         n_in=state['nouts'],
@@ -747,7 +766,7 @@ def jobman(state, channel):
 
     pop_op = Operator(_pop_op)
 
-    # 3. Constructing the model
+    logger.info("Construct the model")
     gater_below = None
     if state['rec_gating']:
         gater_below = gater_words[0](emb(x))
@@ -1093,9 +1112,7 @@ def jobman(state, channel):
             print 'Interrupted'
             pass
 
-
-if __name__=='__main__':
-
+def prototype_state():
     state = {}
 
     state['source'] = ["/data/lisatmp3/chokyun/mt/phrase_table.en.h5"]
@@ -1106,6 +1123,7 @@ if __name__=='__main__':
     state['oov'] = 'UNK'
     # TODO: delete this one
     state['randstart'] = False
+    state['shuffle'] = True
 
     # These are end-of-sequence marks
     state['null_sym_source'] = 15000
@@ -1127,20 +1145,6 @@ if __name__=='__main__':
 
     # This is for the input -> output shortcut
     state['avg_word'] = True
-
-    def maxout(x):
-        shape = x.shape
-        if x.ndim == 1:
-            shape1 = TT.cast(shape[0] / state['maxout_part'], 'int64')
-            shape2 = TT.cast(state['maxout_part'], 'int64')
-            x = x.reshape([shape1, shape2])
-            x = x.max(1)
-        else:
-            shape1 = TT.cast(shape[1] / state['maxout_part'], 'int64')
-            shape2 = TT.cast(state['maxout_part'], 'int64')
-            x = x.reshape([shape[0], shape1, shape2])
-            x = x.max(2)
-        return x
 
     state['eps'] = 1e-10
 
@@ -1227,7 +1231,7 @@ if __name__=='__main__':
     state['seed'] = 1234
 
     # Specifies whether old model should be reloaded first
-    state['reload'] = False
+    state['reload'] = True
 
     # Number of batches to process
     state['loopIters'] = 50000000
@@ -1252,7 +1256,19 @@ if __name__=='__main__':
     state['profile'] = 0
 
     state['prefix'] = 'model_phrase_'
+
     # When set to 0 each new model dump will be saved in a new file
     state['overwrite'] = 1
-    jobman(state, None)
+
+    return state
+
+def experiment(state, channel):
+    proto = prototype_state()
+    for k, v in proto.items():
+        if not k in state:
+            state[k] = v
+    do_experiment(state, channel)
+
+if __name__ == "__main__":
+    do_experiment(prototype_state(), None)
 
