@@ -23,6 +23,7 @@ class Unbuffered:
         return getattr(self.stream, attr)
 
 import sys
+import traceback
 sys.stdout = Unbuffered(sys.stdout)
 
 # Generic imports
@@ -124,7 +125,7 @@ class MainLoop(object):
             self.state[pname] = 1e20
 
         n_elems = state['loopIters'] // state['trainFreq'] + 1
-        self.timings = {}
+        self.timings = {'step' : 0}
         for name in self.algo.return_names:
             self.timings[name] = numpy.zeros((n_elems,), dtype='float32')
         n_elems = state['loopIters'] // state['validFreq'] + 1
@@ -211,6 +212,9 @@ class MainLoop(object):
         self.state['testtime'] = float(time.time()-self.start_time)/60.
 
     def save(self):
+        start = time.time()
+        print "Saving the model..."
+
         # ignore keyboard interrupt while saving
         s = signal.signal(signal.SIGINT, signal.SIG_IGN)
         numpy.savez(self.state['prefix']+'timing.npz',
@@ -224,21 +228,32 @@ class MainLoop(object):
         self.save_iter += 1
         signal.signal(signal.SIGINT, s)
 
+        print "Model saved, took {}".format(time.time() - start)
+
     # FIXME
-    def load(self, name=None):
-        if name is None:
-            name = self.state['prefix'] + 'model.npz'
+    def load(self, model_path=None, timings_path=None):
+        if model_path is None:
+            model_path = self.state['prefix'] + 'model.npz'
+        if timings_path is None:
+            timings_path = self.state['prefix'] + 'timing.npz'
         try:
-            self.model.load(name)
+            self.model.load(model_path)
         except Exception:
-            print 'Corrupted save file'
+            print 'mainLoop: Corrupted model file'
+            traceback.print_exc()
+        try:
+            self.timings = dict(numpy.load(timings_path).iteritems())
+        except Exception:
+            print 'mainLoop: Corrupted timings file'
+            traceback.print_exc()
 
     def main(self):
         print_mem('start')
         self.state['gotNaN'] = 0
         self.start_time = time.time()
         self.batch_start_time = time.time()
-        self.step = 0
+        self.step = int(self.timings['step'])
+        self.algo.step = self.step
         self.save_iter = 0
         self.save()
         if self.channel is not None:
@@ -253,7 +268,7 @@ class MainLoop(object):
                last_cost > .1*self.state['minerr'] and
                (time.time() - start_time)/60. < self.state['timeStop'] and
                self.state['lr'] > self.state['minlr']):
-            if (time.time() - self.save_time)/60. > self.state['saveFreq']:
+            if (time.time() - self.save_time)/60. >= self.state['saveFreq']:
                 self.save()
                 if self.channel is not None:
                     self.channel.save()
@@ -309,6 +324,7 @@ class MainLoop(object):
                     self.train_data.reset()
 
                 self.step += 1
+                self.timings['step'] = self.step
             except:
                 self.state['wholetime'] = float(time.time() - start_time)
                 self.save()
