@@ -662,7 +662,7 @@ def jobman(state, channel):
         indim = 0
         pieces = 0
         act_layer = UnaryOp(activation=eval(state['unary_activ']))
-        drop_layer = DropOp(rng=rng, dropout=stat
+        drop_layer = DropOp(rng=rng, dropout=state['dropout'])
 
     if state['deep_out']:
         indim = state['dim_mlp'] / state['maxout_part']
