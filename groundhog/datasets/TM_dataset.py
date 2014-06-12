@@ -198,6 +198,7 @@ class TMIteratorPytablesGatherProcessing(Process):
         self.data_len = self.source_langs[-1][1].shape[0]
 
         self.idxs = np.arange(self.data_len)
+        self.datasetIter.offset = np.random.randint(self.data_len)
 
         if self.datasetIter.shuffle:
             np.random.shuffle(self.idxs)
