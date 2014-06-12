@@ -160,7 +160,7 @@ def get_data(state):
                                                   new_format=new_format),
         can_fit=False,
         queue_size=10,
-        cache_size=10,
+        cache_size=state['cache_size'],
         shuffle=state['shuffle'])
 
     valid_data = None
@@ -1123,7 +1123,6 @@ def prototype_state():
     state['oov'] = 'UNK'
     # TODO: delete this one
     state['randstart'] = False
-    state['shuffle'] = True
 
     # These are end-of-sequence marks
     state['null_sym_source'] = 15000
@@ -1242,6 +1241,8 @@ def prototype_state():
 
     # Resetting data iterator during training
     state['reset'] = -1
+    state['shuffle'] = True
+    state['cache_size'] = 10
 
     # Frequency of training error reports (in number of batches)
     state['trainFreq'] = 1
