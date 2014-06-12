@@ -325,6 +325,7 @@ class MainLoop(object):
 
                 self.step += 1
                 self.timings['step'] = self.step
+                print "took {}".format(time.time() - st)
             except:
                 self.state['wholetime'] = float(time.time() - start_time)
                 self.save()
