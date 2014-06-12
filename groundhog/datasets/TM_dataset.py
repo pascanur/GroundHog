@@ -182,7 +182,7 @@ class TMIteratorPytablesGatherProcessing(Process):
             for target_lfile in self.datasetIter.target_lfiles:
                 target_lang = tables.open_file(target_lfile, 'r', driver=driver)
                 self.target_langs.append([
-                    target_lang.get_node(self.datasetIter.table_name), 
+                    target_lang.get_node(self.datasetIter.table_name),
                     target_lang.get_node(self.datasetIter.index_name)])
 
         for source_lfile in self.datasetIter.source_lfiles:
@@ -242,7 +242,7 @@ class TMIteratorPytablesGatherProcessing(Process):
 
                 if inc_offset > self.data_len and self.datasetIter.use_infinite_loop:
                     print "Restarting the dataset iterator."
-                    inc_offset = 0 
+                    inc_offset = 0
                     if self.datasetIter.shuffle:
                         np.random.shuffle(self.idxs)
                 elif inc_offset > self.data_len:
@@ -258,12 +258,12 @@ class TMIteratorPytablesGatherProcessing(Process):
 
             if source_data[0] == None:
                 continue
-            
+
             self.queue.put([source_data, target_data])
             if last_batch:
                 self.queue.put([None])
                 return
-            
+
 
 class TMIteratorPytables(object):
 
@@ -276,9 +276,9 @@ class TMIteratorPytables(object):
                  use_infinite_loop=True,
                  stop=-1,
                  output_format = None,
-                 table_name = '/phrases', 
-                 index_name = '/indices', 
-                 freqs_name = '/counts', 
+                 table_name = '/phrases',
+                 index_name = '/indices',
+                 freqs_name = '/counts',
                  can_fit = False,
                  queue_size = 1000,
                  cache_size = 1000,
@@ -286,7 +286,7 @@ class TMIteratorPytables(object):
                  shuffle = True):
 
         assert type(source_lfiles) == list, "Source language file should be a list."
-        
+
         if target_lfiles is not None:
             assert type(target_lfiles) == list, "Target language file should be a list."
             assert len(target_lfiles) == len(source_lfiles)
@@ -330,7 +330,7 @@ class TMIteratorPytables(object):
         if self.target_lfiles is not None:
             for target_lfile in self.target_lfiles:
                 target_lang = tables.open_file(target_lfile, 'r')
-                self.target_langs.append([target_lang.get_node(self.table_name), 
+                self.target_langs.append([target_lang.get_node(self.table_name),
                     target_lang.get_node(self.index_name)])
 
         for source_lfile in self.source_lfiles:
@@ -436,7 +436,7 @@ class NNJMContextIterator(object):
                 inc_offset = self.offset + self.batch_size
                 if inc_offset > self.data_len and self.use_infinite_loop:
                     print "Restarting the dataset iterator."
-                    inc_offset = 0 
+                    inc_offset = 0
                 elif inc_offset > self.data_len:
                     self.offset = 0
                     raise StopIteration
