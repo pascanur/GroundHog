@@ -6,7 +6,9 @@ This is a test script for the RNN Encoder-Decoder
 from groundhog.datasets import TMIteratorPytables
 from groundhog.trainer.SGD_adadelta import SGD
 from groundhog.mainLoop import MainLoop
-from groundhog.layers import MultiLayer, \
+from groundhog.layers import \
+        Layer,\
+        MultiLayer, \
         RecurrentLayer, \
         SoftmaxLayer, \
         LastState, \
@@ -35,6 +37,19 @@ logger.setLevel(logging.INFO)
 
 rect = 'lambda x:x*(x>0)'
 htanh = 'lambda x:x*(x>-1)*(x<1)'
+
+class ReplicateLayer(Layer):
+
+    def __init__(self, n_times):
+        self.n_times = n_times
+        super(ReplicateLayer, self).__init__(0, 0, None)
+
+    def fprop(self, matrix):
+        # This is black magic based on broadcasting,
+        # that's why variable names don't make any sense.
+        a = TT.shape_padleft(matrix)
+        b = TT.alloc(numpy.float32(1), self.n_times, 1, 1)
+        return a * b
 
 def get_data(state):
     rng = numpy.random.RandomState(123)
@@ -166,6 +181,144 @@ def get_data(state):
     valid_data = None
     test_data = None
     return train_data, valid_data, test_data
+
+class Encoder(object):
+
+    def __init__(self, state, rng):
+        self.state = state
+        self.rng = rng
+        self.default_kwargs = dict(
+            init_fn=state['weight_init_fn'],
+            weight_noise=state['weight_noise'],
+            scale=state['weight_scale'])
+
+    def create_encoder_stack_level(self, level, layer_below,
+            input_embeds, reset_embeds, update_embeds,
+            x_mask, use_noise):
+        """Calculate activations of yet another recurrent layer"""
+
+        input_signal = input_embeds
+        reset_signal = reset_embeds
+        update_signal = update_embeds
+
+        if level > 0:
+            from_below_kwargs = self.default_kwargs
+            from_below_kwargs.update(
+                    n_in=self.state['dim'],
+                    n_hids=self.state['dim'],
+                    activation=['lambda x:x'])
+
+            action = MultiLayer(self.rng,
+                    name="input_from_below_%d"%level,
+                    **from_below_kwargs)
+            input_signal += action(layer_below)
+            if self.state['rec_reseting']:
+                action = MultiLayer(self.rng,
+                    name="reset_from_below_%d"%level,
+                    **from_below_kwargs)
+                reset_signal += action(layer_below)
+            if self.state['rec_gating']:
+                action = MultiLayer(self.rng,
+                    name="update_from_below_%d"%level,
+                    **from_below_kwargs)
+                update_signal += action(layer_below)
+
+        rec_layer = eval(self.state['rec_layer'])(
+                self.rng,
+                n_hids=self.state['dim'],
+                activation=self.state['activ'],
+                bias_scale=self.state['bias'],
+                scale=self.state['rec_weight_scale'],
+                init_fn=self.state['rec_weight_init_fn'],
+                weight_noise=self.state['weight_noise_rec'],
+                dropout=self.state['dropout_rec'],
+                gating=self.state['rec_gating'],
+                gater_activation=self.state['rec_gater'],
+                reseting=self.state['rec_reseting'],
+                reseter_activation=self.state['rec_reseter'],
+                name='hidden_layer_%d'%level)
+        seqlen = input_embeds.out.shape[0] // self.state['bs']
+        return rec_layer(layer_below,
+                n_steps=seqlen,
+                batch_size=self.state['bs'],
+                mask=x_mask,
+                gater_below=update_signal,
+                reseter_below=reset_signal,
+                use_noise=use_noise)
+
+    def create_encoder(self, x, x_mask, use_noise):
+        """Create the computational graph of the RNN Encoder"""
+
+        # Produces rank-approximate word representations.
+        approx_embeddings = MultiLayer(
+            self.rng,
+            n_in=self.state['n_sym_source'],
+            n_hids=[self.state['rank_n_approx']],
+            activation=[self.state['rank_n_activ']],
+            name='approx_embs',
+            **self.default_kwargs)
+
+        # We have 3 embeddings for each word in each level,
+        # the one used as input,
+        # the one used to control resetting gate,
+        # the one used to control update gate.
+        input_embeddings = [None] * self.state['encoder_stack']
+        reset_embeddings = [None] * self.state['encoder_stack']
+        update_embeddings = [None] * self.state['encoder_stack']
+        embedding_kwargs = self.default_kwargs
+        embedding_kwargs.update(dict(
+            n_in=self.state['rank_n_approx'],
+            n_hids=[self.state['dim']],
+            activation=['lambda x:x']))
+        for level in range(self.state['encoder_stack']):
+            action = MultiLayer(
+                self.rng,
+                name='input_embs_%d'%level,
+                **embedding_kwargs)
+            input_embeddings[level] = action(approx_embeddings)
+            if self.state['rec_gating']:
+                action = MultiLayer(
+                    self.rng,
+                    learn_bias=False,
+                    name='update_embs_%d'%level,
+                    **embedding_kwargs)
+                update_embeddings[level] = action(approx_embeddings)
+            if self.state['rec_reseting']:
+                action = MultiLayer(
+                    self.rng,
+                    learn_bias=False,
+                    name='reset_embs_%d'%level,
+                    **embedding_kwargs)
+                reset_embeddings[level] = action(approx_embeddings)
+
+        hidden_layers = []
+        for level in range(self.state['encoder_stack']):
+            hidden_layers.append(self.create_encoder_stack_level(
+                level,
+                hidden_layers[level - 1] if level > 0 else None,
+                input_embeddings[level],
+                reset_embeddings[level],
+                update_embeddings[level]))
+
+        # If we no stack of RNN but only a usual one,
+        # then the last hidden state is used as a representation.
+        if self.state['encoder_stack'] == 1:
+            return LastState(hidden_layers[0])
+
+        # If we have a stack of RNN, then their last hidden states
+        # are combined with a maxout layer.
+        stack_projections = []
+        for level in range(self.state['encoder_stack']):
+            action = MultiLayer(
+                self.rng,
+                n_in=self.state['dim'],
+                n_hids=[self.state['dim'] * self.state['maxout_part']],
+                activation=['lambda x: x'],
+                name="hidden_%d_to_repr"%level,
+                **self.default_kwargs)
+            stack_projections.append(action(LastState(hidden_layers[level])))
+        action = UnaryOp(activation=eval(self.state['unary_activ']), name="calc_repr")
+        return action(sum(stack_projections))
 
 def do_experiment(state, channel):
     def maxout(x):
