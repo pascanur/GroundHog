@@ -17,9 +17,6 @@ import copy
 import threading
 import Queue
 
-from multiprocessing import Process, Value, Array
-import multiprocessing
-
 import collections
 
 class TMIterator(object):
@@ -159,12 +156,12 @@ class TMIterator(object):
         else:
             return self.output_format(source_data, target_data)
 
-class TMIteratorPytablesGatherProcessing(Process):
+class TMIteratorPytablesGatherProcessing(threading.Thread):
     def __init__(self,
             datasetIter,
             exitFlag,
             queue):
-        Process.__init__(self)
+        threading.Thread.__init__(self)
         self.datasetIter = datasetIter
         self.exitFlag = exitFlag
         self.queue = queue
@@ -318,7 +315,7 @@ class TMIteratorPytables(object):
         else:
             self.cache = None
 
-        self.queue = multiprocessing.Queue(maxsize=queue_size)
+        self.queue = Queue.Queue(maxsize=queue_size)
         self.gather = TMIteratorPytablesGatherProcessing(self,
                 self.exitFlag, self.queue)
         self.gather.start()
