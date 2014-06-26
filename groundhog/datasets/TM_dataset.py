@@ -318,6 +318,7 @@ class TMIteratorPytables(object):
         self.queue = Queue.Queue(maxsize=queue_size)
         self.gather = TMIteratorPytablesGatherProcessing(self,
                 self.exitFlag, self.queue)
+        self.gather.daemon = True
         self.gather.start()
 
     def __del__(self):
