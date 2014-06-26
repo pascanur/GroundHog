@@ -12,6 +12,7 @@ __contact__ = "Razvan Pascanu <r.pascanu@gmail>"
 
 import numpy
 import copy
+import logging
 import theano
 import theano.tensor as TT
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
@@ -22,6 +23,7 @@ from groundhog.utils import sample_weights, sample_weights_classic,\
 
 from basic import Layer
 
+logger = logging.getLogger(__name__)
 
 class CostLayer(Layer):
     """
@@ -1051,6 +1053,7 @@ class SoftmaxLayer(CostLayer):
         assert target, 'Computing the cost requires a target'
         shape0 = class_probs.shape[0]
         shape1 = class_probs.shape[1]
+        target_shape = target.shape
         if target.ndim > 1:
             target = target.flatten()
         assert target.ndim == 1, 'make sure target is a vector of ints'
@@ -1059,6 +1062,7 @@ class SoftmaxLayer(CostLayer):
         pos = TT.arange(shape0)*shape1
         new_targ = target + pos
         cost = -TT.log(class_probs.flatten()[new_targ])
+        self.word_probs = TT.exp(-cost.reshape(target_shape))
 
         if mask:
             cost = cost * TT.cast(mask.flatten(), theano.config.floatX)
@@ -1078,7 +1082,6 @@ class SoftmaxLayer(CostLayer):
             self.cost = self.cost*scale
         if reg:
             self.cost = self.cost + reg
-        self.out = self.cost
         self.mask = mask
         self.cost_scale = scale
         return self.cost
