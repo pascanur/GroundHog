@@ -48,7 +48,8 @@ class MainLoop(object):
                  hooks=None,
                  reset=-1,
                  train_cost=False,
-                 validate_postprocess=None):
+                 validate_postprocess=None,
+                 l2_params=False):
         """
         :type train_data: groundhog dataset object
         :param train_data: data iterator used for training
@@ -90,6 +91,9 @@ class MainLoop(object):
         :type validate_postprocess: None or function
         :param validate_postprocess: function called on the validation cost
             every time before applying the logic of the early stopper
+
+        :type l2_params: bool
+        :param l2_params: save parameter norms at each step
         """
         ###################
         # Step 0. Set parameters
@@ -105,6 +109,7 @@ class MainLoop(object):
         self.old_cost = 1e21
         self.validate_postprocess = validate_postprocess
         self.patience = state['patience']
+        self.l2_params = l2_params
 
         self.train_cost = train_cost
 
@@ -128,6 +133,9 @@ class MainLoop(object):
         self.timings = {'step' : 0}
         for name in self.algo.return_names:
             self.timings[name] = numpy.zeros((n_elems,), dtype='float32')
+        if self.l2_params:
+            for param in model.params:
+                self.timings["l2_" + param.name] = numpy.zeros(n_elems, dtype="float32")
         n_elems = state['loopIters'] // state['validFreq'] + 1
         for pname in model.valid_costs:
             self.state['valid'+pname] = 1e20
@@ -282,6 +290,10 @@ class MainLoop(object):
                 for name in rvals.keys():
                     pos = self.step // self.state['trainFreq']
                     self.timings[name][pos] = float(numpy.array(rvals[name]))
+                if self.l2_params:
+                    for param in self.model.params:
+                        self.timings["l2_" + param.name][pos] =\
+                            numpy.mean(param.get_value() ** 2) ** 0.5
 
                 if (numpy.isinf(rvals['cost']) or
                    numpy.isnan(rvals['cost'])) and\
