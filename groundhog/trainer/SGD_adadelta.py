@@ -12,6 +12,7 @@ __contact__ = "Razvan Pascanu <r.pascanu@gmail>"
 
 import numpy
 import time
+import logging
 
 import theano
 import theano.tensor as TT
@@ -20,12 +21,14 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from groundhog.utils import print_time, print_mem, const
 
+logger = logging.getLogger(__name__)
 
 class SGD(object):
     def __init__(self,
                  model,
                  state,
-                 data):
+                 data,
+                 compil=True):
         """
         Parameters:
             :param model:
@@ -81,7 +84,7 @@ class SGD(object):
         ###################################
         # Step 1. Compile training function
         ###################################
-        print 'Constructing grad function'
+        logger.debug('Constructing grad function')
         loc_data = self.gdata
         self.prop_exprs = [x[1] for x in model.properties]
         self.prop_names = [x[0] for x in model.properties]
@@ -123,14 +126,15 @@ class SGD(object):
         gnorm2_up = [rho * gn2 + (1. - rho) * (g ** 2.) for gn2,g in zip(self.gnorm2, gs)]
         updates = updates + zip(self.gnorm2, gnorm2_up)
 
-        print 'Compiling grad function'
+        logger.debug('Compiling grad function')
         st = time.time()
-        self.train_fn = theano.function(
-            [], outs, name='train_function',
-            updates = updates,
-            givens = zip(model.inputs, loc_data),
-            profile=self.state['profile'])
-        print 'took', time.time() - st
+        if compil:
+            self.train_fn = theano.function(
+                [], outs, name='train_function',
+                updates = updates,
+                givens = zip(model.inputs, loc_data),
+                profile=self.state['profile'])
+        logger.debug('took {}'.format(time.time() - st))
 
         self.lr = numpy.float32(1.)
         new_params = [p - (TT.sqrt(dn2 + eps) / TT.sqrt(gn2 + eps)) * g
@@ -144,11 +148,12 @@ class SGD(object):
             for dn2, gn2, g in zip(self.dnorm2, self.gnorm2, self.gs)]
         updates = updates + d2_up
 
-        self.update_fn = theano.function(
-            [], [], name='update_function',
-            allow_input_downcast=True,
-            updates = updates,
-            profile=self.state['profile'])
+        if compil:
+            self.update_fn = theano.function(
+                [], [], name='update_function',
+                allow_input_downcast=True,
+                updates = updates,
+                profile=self.state['profile'])
 
         self.old_cost = 1e20
         self.schedules = model.get_schedules()
