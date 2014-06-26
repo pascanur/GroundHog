@@ -170,7 +170,12 @@ class Container(object):
         for p in self.params:
             if p.name in vals:
                 print 'Loading', p.name
+                if p.get_value().shape != vals[p.name].shape:
+                    raise Exception("Shape mismatch: {} != {} for {}"
+                            .format(p.get_value().shape, vals[p.name].shape, p.name))
                 p.set_value(vals[p.name])
+            else:
+                raise Exception("Unknown parameter {}".format(p.name))
 
 class Layer(Container):
     """
