@@ -725,7 +725,7 @@ class Decoder(EncoderDecoderBase):
 
     def build_sampler(self, n_steps, T, c):
         states = [TT.constant(0, dtype='int64'), TT.constant(0.0, dtype='float32')]\
-                + [init(c) for init in self.initializers]
+                + [init(c).out for init in self.initializers]
         dbg_sum("Init:", states[2])
         params = [c, T]
         outputs, updates = scan(self.sampling_step,
