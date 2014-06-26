@@ -11,12 +11,15 @@ __contact__ = "Razvan Pascanu <r.pascanu@gmail>"
 import numpy
 import copy
 import cPickle as pkl
+import logging
 
 import theano
 import theano.tensor as TT
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from groundhog.utils import utils
 from groundhog.utils.utils import id_generator
+
+logger = logging.getLogger(__name__)
 
 class Container(object):
     """
@@ -169,7 +172,7 @@ class Container(object):
         vals = numpy.load(filename)
         for p in self.params:
             if p.name in vals:
-                print 'Loading', p.name
+                logger.debug('Loading {}'.format(p.name))
                 if p.get_value().shape != vals[p.name].shape:
                     raise Exception("Shape mismatch: {} != {} for {}"
                             .format(p.get_value().shape, vals[p.name].shape, p.name))
