@@ -18,14 +18,17 @@ from groundhog.layers import \
         Shift, \
         GaussianNoise
 from groundhog.models import LM_Model
-from theano.sandbox.scan import scan
+from theano import scan
 
 import numpy
 import theano
 import theano.tensor as TT
 import theano.printing
-import sys
 import logging
+import traceback
+import sys
+import pprint
+import cPickle
 
 theano.config.allow_gc = True
 
@@ -52,6 +55,13 @@ def none_if_zero(x):
     if x == 0:
         return None
     return x
+
+def dbg_sum(text, x):
+    if not isinstance(x, TT.TensorVariable):
+        x.out = theano.printing.Print(text, attrs=['sum'])(x.out)
+        return x
+    else:
+        return theano.printing.Print(text, attrs=['sum'])(x)
 
 def get_data(state, rng):
 
@@ -320,10 +330,31 @@ class Encoder(EncoderDecoderBase):
         self.repr_calculator = UnaryOp(activation=eval(self.state['unary_activ']), name="enc_repr_calc")
 
     def build_encoder(self, x, x_mask, use_noise):
-        """Create the computational graph of the RNN Encoder"""
+        """Create the computational graph of the RNN Encoder
 
+        :param x: input variable, either vector of word indices or
+        matrix of word indices, where each column is a sentence
+
+        :param x_mask: when x is a matrix and input sequences are
+        of variable length, this 1/0 matrix is used to specify
+        the matrix positions where the input actually is
+
+        :param use_noise: turns on addition of noise to weights
+        """
+
+        # Low rank embeddings of all the input words.
+        # Shape in case of matrix input:
+        #   (max_seq_len * batch_size, rank_n_approx),
+        #   where max_seq_len is the maximum length of batch sequences.
+        # Here and later n_words = max_seq_len * batch_size.
+        # Shape in case of vector input:
+        #   (seq_len, rank_n_approx)
         approx_embeddings = self.approx_embedder(x)
+        dbg_sum("Approximate embeddings:", approx_embeddings)
 
+        # Low rank embeddings are projected to contribute
+        # to input, reset and update signals.
+        # All the shapes: (n_words, dim)
         input_signals = []
         reset_signals = []
         update_signals = []
@@ -331,20 +362,26 @@ class Encoder(EncoderDecoderBase):
             input_signals.append(self.input_embedders[level](approx_embeddings))
             update_signals.append(self.update_embedders[level](approx_embeddings))
             reset_signals.append(self.reset_embedders[level](approx_embeddings))
+            dbg_sum("Input embeddings:", input_signals[-1])
+            dbg_sum("Update embeddings:", update_signals[-1])
+            dbg_sum("Reset embeddings:", reset_signals[-1])
 
+        # Hidden layers.
+        # Shape in case of matrix input: (max_seq_len, batch_size, dim)
+        # Shape in case of vector input: (seq_len, dim)
         hidden_layers = []
         for level in range(self.num_levels):
+            # Each hidden layer (except the bottom one) receives
+            # input, reset and update signals from below.
+            # All the shapes: (n_words, dim)
             if level > 0:
                 input_signals[level] += self.inputter[level](self.hidden_layers[-1])
                 update_signals[level] += self.updater[level](self.hidden_layers[-1])
                 reset_signals[level] += self.resetter[level](self.hidden_layers[-1])
-            #input_signals[level].out = theano.printing.Print("Encoder input signal: ", attrs=['shape'])(input_signals[level].out)
-            #update_signals[level].out = theano.printing.Print("Encoder update signal: ", attrs=['shape'])(update_signals[level].out)
-            #reset_signals[level].out = theano.printing.Print("Encoder reset signal: ", attrs=['shape'])(reset_signals[level].out)
             hidden_layers.append(self.transitions[level](
                     input_signals[level],
                     nsteps=x.shape[0],
-                    batch_size=self.state['bs'],
+                    batch_size=x.shape[1] if x.ndim == 2 else 1,
                     mask=x_mask,
                     gater_below=none_if_zero(update_signals[level]),
                     reseter_below=none_if_zero(reset_signals[level]),
@@ -352,15 +389,22 @@ class Encoder(EncoderDecoderBase):
 
         # If we no stack of RNN but only a usual one,
         # then the last hidden state is used as a representation.
+        # Return value shape in case of matrix input:
+        #   (batch_size, dim)
+        # Return value shape in case of vector input:
+        #   (dim,)
         if self.num_levels == 1:
             return LastState()(hidden_layers[0])
 
         # If we have a stack of RNN, then their last hidden states
         # are combined with a maxout layer.
+        # Return value however has the same shape.
         contributions = []
         for level in range(self.num_levels):
             contributions.append(self.repr_contributors(LastState()(hidden_layers[level])))
-        return self.repr_calculator(sum(contributions))
+        c = self.repr_calculator(sum(contributions))
+        dbg_sum("c:", c)
+        return c
 
 class Decoder(EncoderDecoderBase):
 
@@ -469,7 +513,7 @@ class Decoder(EncoderDecoderBase):
                     self.state['dim'] / self.state['maxout_part'],
                     self.state['nouts'],
                     sparsity=-1,
-                    rank_n_approx=0,
+                    rank_n_approx=self.state['rank_n_approx'],
                     name='dec_deep_softmax',
                     **self.default_kwargs)
         else:
@@ -479,24 +523,66 @@ class Decoder(EncoderDecoderBase):
                     self.state['dim'],
                     self.state['nouts'],
                     sparsity=-1,
-                    rank_n_approx=self.state['rank_n_approx'],
-                    rank_n_activ=self.state['rank_n_activ'],
+                    rank_n_approx=0,
                     name='dec_softmax',
+                    sum_over_time=True,
                     **self.default_kwargs)
 
-    def build_predictor(self, c, y, y_mask, use_noise):
-        """Create the computational graph of the RNN Decoder"""
+    def build_decoder(self, c, y, y_mask=None,
+            for_sampling=False, given_init_states=None, T=1):
+        """Create the computational graph of the RNN Decoder
 
-        #y = theano.printing.Print("y: ", attrs=['shape'])(y)
+        :param c: a representation produced by an encoder. Either (dim,)
+        vector or (batch_size, dim) matrix
 
-        replicated_c = ReplicateLayer(y.shape[0])(c)
-        #replicated_c.out = theano.printing.Print("Replicated representation: ",
-        #        attrs=['shape'])(replicated_c.out)
+        :param y:
+        if not for_sampling:
+            target sequences, matrix of word indices,
+            where each column is a sequence
+        if for_sampling:
+            a scalar corresponding to the previous word
 
-        approx_embeddings = self.approx_embedder(y)
-        #approx_embeddings.out = theano.printing.Print("Approximate embeddings: ",
-        #        attrs=['shape'])(approx_embeddings.out)
+        :param y_mask: if not for_sampling a 0/1 matrix determining lengths
+            of the target sequences, must be None if for_sampling
 
+        :param for_sampling: if True then builds the next word predictor,
+            otherwise builds a log-likelihood evaluator
+
+        :param given_init_states: if not None specifies
+            the initial states of hidden layers
+
+        :param T: sampling temperature
+        """
+
+        # Check parameter consistency
+        if for_sampling:
+            assert y_mask == None
+            y = dbg_sum("Y:", y)
+
+        # For log-likelihood evaluation the representation
+        # be replicated for conveniency.
+        # Shape if not for_sampling:
+        #   (max_seq_len, batch_size, dim)
+        # Shape if for_sampling:
+        #   (dim,)
+        if for_sampling:
+            replicated_c = c
+        else:
+            replicated_c = ReplicateLayer(y.shape[0])(c)
+
+        # Low rank embeddings of all the input words.
+        # Shape if not for_sampling:
+        #   (n_words, rank_n_approx),
+        # Shape if for_sampling:
+        #   (rank_n_approx, )
+        approx_embeddings = dbg_sum("Approximate y embeddings:", self.approx_embedder(y))
+
+        # Low rank embeddings are projected to contribute
+        # to input, reset and update signals.
+        # All the shapes if not for_sampling:
+        #   (n_words, dim)
+        # All the shape if for_sampling:
+        #   (dim,)
         input_signals = []
         reset_signals = []
         update_signals = []
@@ -511,66 +597,178 @@ class Decoder(EncoderDecoderBase):
             update_signals[level] += self.decode_updaters[level](replicated_c)
             reset_signals[level] += self.decode_resetters[level](replicated_c)
 
-        init_states = []
-        for level in range(self.num_levels):
-            init_states.append(self.initializers[level](c))
+            dbg_sum("Input signal:", input_signals[-1])
+            dbg_sum("Update signal:", update_signals[-1])
+            dbg_sum("Reset signal:", reset_signals[-1])
 
+        # Hidden layers' initial states.
+        # Shapes if not for_sampling:
+        #   (batch_size, dim)
+        # Shape if for_sampling:
+        #   (,dim)
+        init_states = given_init_states
+        if not init_states:
+            init_states = []
+            for level in range(self.num_levels):
+                init_states.append(self.initializers[level](c))
+
+        # Hidden layers' states.
+        # Shapes if not for_sampling:
+        #  (seq_len, batch_size, dim)
+        # Shapes if for_sampling:
+        #  (,dim)
         hidden_layers = []
         for level in range(self.num_levels):
             if level > 0:
                 input_signals[level] += self.inputter[level](self.hidden_layers[level - 1])
                 update_signals[level] += self.updater[level](self.hidden_layers[level - 1])
                 reset_signals[level] += self.resetter[level](self.hidden_layers[level - 1])
-            #input_signals[level].out = theano.printing.Print("Decoder input signal: ",
-            #    attrs=['shape'])(input_signals[level].out)
-            #update_signals[level].out = theano.printing.Print("Decder update signal: ",
-            #    attrs=['shape'])(update_signals[level].out)
-            #reset_signals[level].out = theano.printing.Print("Decoder reset signal: ",
-            #    attrs=['shape'])(reset_signals[level].out)
-            #init_states[level].out = theano.printing.Print("Decoder initialization signal: ",
-            #    attrs=['shape'])(init_states[level].out)
-            #y_mask = theano.printing.Print("Decoder mask: ", attrs=['shape'])(y_mask)
             hidden_layers.append(self.transitions[level](
                     input_signals[level],
-                    init_state=init_states[level],
-                    nsteps=y.shape[0],
-                    batch_size=self.state['bs'],
                     mask=y_mask,
                     gater_below=none_if_zero(update_signals[level]),
                     reseter_below=none_if_zero(reset_signals[level]),
-                    use_noise=use_noise))
-            #hidden_layers[-1].out = theano.printing.Print("Decoder hidden layer: ", attrs=['shape'])(hidden_layers[-1].out)
+                    one_step=for_sampling,
+                    use_noise=not for_sampling,
+                    **(dict(state_before=init_states[level])
+                        if for_sampling
+                        else dict(init_state=init_states[level],
+                            batch_size=self.state['bs'],
+                            nsteps=y.shape[0]))
+                        ))
+            hidden_layers[-1] = dbg_sum("Hidden:", hidden_layers[-1])
 
+        # In hidden_layers we do no have the initial state, but we need it.
+        # Instead of it we have the last one, which we do not need.
+        # So what we do is discard the last one and prepend the initial one.
+        if not for_sampling:
+            for level in range(self.num_levels):
+                hidden_layers[level].out = TT.concatenate([
+                        TT.shape_padleft(init_states[level].out),
+                        hidden_layers[level].out])[:-1]
+
+        # The output representation to be fed in softmax.
+        # Shape if for_sampling:
+        #   (n_words, dim_r)
+        # Shape if not for_sampling:
+        #   (,dim_r)
+        # ... where dim_r depends on 'deep_out' option.
         readout = self.repr_readout(replicated_c)
-        #readout.out = theano.printing.Print("Readout from representation: ", attrs=['shape'])(readout.out)
         for level in range(self.num_levels):
-            readout += self.hidden_readouts[level](hidden_layers[level])
-            #readout.out = theano.printing.Print("Readout from repr. and hidden layer: ", attrs=['shape'])(readout.out)
-        if y.ndim == 1:
-            readout += Shift()(self.prev_word_readout(approx_embeddings).reshape(
-                (y.shape[0], 1, self.state['dim'])))
-        else:
-            # This place needs explanation. When prev_word_readout is applied to
-            # approx_embeddings the resulting shape is
-            # (n_batches * sequence_length, repr_dimensionality). We first
-            # transform it into 3D tensor to shift forward in time. Then
-            # reshape it back.
-            readout += Shift()(self.prev_word_readout(approx_embeddings).reshape(
-                (y.shape[0], y.shape[1], self.state['dim']))).reshape(
-                        readout.out.shape)
-        #readout.out = theano.printing.Print("Final readout: ", attrs=['shape'])(readout.out)
+            if for_sampling:
+                read_from = init_states[level]
+            else:
+                read_from = hidden_layers[level]
+            readout += self.hidden_readouts[level](read_from)
+        if self.state['bigram']:
+            if for_sampling:
+                readout += self.prev_word_readout(approx_embeddings)
+            else:
+                if y.ndim == 1:
+                    readout += Shift()(self.prev_word_readout(approx_embeddings).reshape(
+                        (y.shape[0], 1, self.state['dim'])))
+                else:
+                    # This place needs explanation. When prev_word_readout is applied to
+                    # approx_embeddings the resulting shape is
+                    # (n_batches * sequence_length, repr_dimensionality). We first
+                    # transform it into 3D tensor to shift forward in time. Then
+                    # reshape it back.
+                    readout += Shift()(self.prev_word_readout(approx_embeddings).reshape(
+                        (y.shape[0], y.shape[1], self.state['dim']))).reshape(
+                                readout.out.shape)
         for fun in self.output_nonlinearities:
             readout = fun(readout)
-        #theano.printing.debugprint(readout.out)
 
-        return self.output_layer.train(
-                state_below=readout,
-                target=y,
-                mask=y_mask,
-                reg=None)
+        if for_sampling:
+            dbg_sum("Readout:", readout)
+            sample = self.output_layer.get_sample(
+                    state_below=readout,
+                    temp=T)
+            # Current SoftmaxLayer.get_cost is stupid,
+            # that's why we have to reshape a lot.
+            log_prob = self.output_layer.get_cost(
+                    state_below=TT.shape_padleft(readout),
+                    temp=T,
+                    target=sample.reshape((1,)))
+            return [sample] + [log_prob] + hidden_layers
+        else:
+            return self.output_layer.train(
+                    state_below=readout,
+                    target=y,
+                    mask=y_mask,
+                    reg=None)
+
+    def sampling_step(self, *args):
+        """Implements one step of sapling
+
+        *args are necessary since the number of argument can vary"""
+
+        args = iter(args)
+
+        prev_word = next(args)
+        assert prev_word.ndim == 0
+        # skip the previous word log probability
+        assert next(args).ndim == 0
+        prev_hidden_states = [dbg_sum("PrevHidden:", next(args)) for k in range(self.num_levels)]
+        assert prev_hidden_states[0].ndim == 1
+        c = next(args)
+        assert c.ndim == 1
+        T = next(args)
+        assert T.ndim == 0
+
+        sample, log_prob, _ =  self.build_decoder(c, prev_word, for_sampling=True,
+                given_init_states=prev_hidden_states, T=T)
+        _1, _2, hidden_states = self.build_decoder(c, sample, for_sampling=True,
+                given_init_states=prev_hidden_states, T=T)
+        return sample, log_prob, hidden_states
+
+    def build_sampler(self, n_steps, T, c):
+        states = [TT.constant(0, dtype='int64'), TT.constant(0.0, dtype='float32')]\
+                + [init(c) for init in self.initializers]
+        dbg_sum("Init:", states[2])
+        params = [c, T]
+        outputs, updates = scan(self.sampling_step,
+                outputs_info=states,
+                non_sequences=params,
+                n_steps=n_steps,
+                name="sampler_scan")
+        return (outputs[0], outputs[1].sum()), updates
+
+class RandomSamplePrinter(object):
+
+    def __init__(self, state, model, train_iter, var_x, var_x_mask, var_y, var_y_mask):
+        args = dict(locals())
+        args.pop('self')
+        self.__dict__.update(**args)
+
+    def __call__(self):
+        def cut_eol(words):
+            for i, word in enumerate(words):
+                if words[i] == '<eol>':
+                    return words[:i + 1]
+
+        sample_idx = 0
+        while sample_idx < self.state['n_examples']:
+            batch = self.train_iter.next()
+            xs, ys = batch['x'], batch['y']
+            for seq_idx in range(xs.shape[1]):
+                if sample_idx == self.state['n_examples']:
+                    break
+
+                x, y = xs[:, seq_idx], ys[:, seq_idx]
+                x_words = cut_eol(map(lambda w_idx : self.model.word_indxs_src[w_idx], x))
+                y_words = cut_eol(map(lambda w_idx : self.model.word_indxs[w_idx], y))
+                if len(x_words) == 0:
+                    continue
+
+                print "Input: {}".format(" ".join(x_words))
+                print "Target: {}".format(" ".join(y_words))
+                self.model.get_samples(self.state['seqlen'] + 1, self.state['n_samples'], x[:len(x_words)])
+                sample_idx += 1
 
 def do_experiment(state, channel):
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
+    logger.debug("Starting state: {}".format(pprint.pformat(state)))
 
     rng = numpy.random.RandomState(state['seed'])
 
@@ -581,46 +779,119 @@ def do_experiment(state, channel):
         # Skip loading if no training is planned
         train_data = None
 
-    logger.debug("Create input variables")
-    if state['bs'] == 1:
-        x = TT.lvector('x')
-        x_mask = TT.vector('x_mask')
-        y = TT.lvector('y')
-        y_mask = TT.vector('y_mask')
-    else:
-        x = TT.lmatrix('x')
-        x_mask = TT.matrix('x_mask')
-        y = TT.lmatrix('y')
-        y_mask = TT.matrix('y_mask')
+    try:
+        logger.debug("Create input variables")
+        if state['bs'] == 1:
+            x = TT.lvector('x')
+            x_mask = TT.vector('x_mask')
+            y = TT.lvector('y')
+            y_mask = TT.vector('y_mask')
+        else:
+            x = TT.lmatrix('x')
+            x_mask = TT.matrix('x_mask')
+            y = TT.lmatrix('y')
+            y_mask = TT.matrix('y_mask')
 
-    logger.debug("Create encoder")
-    encoder = Encoder(state, rng)
-    encoder.create_layers()
-    logger.debug("Build encoding computation graph")
-    training_c = encoder.build_encoder(x, x_mask, use_noise=True)
+        logger.debug("Create encoder")
+        encoder = Encoder(state, rng)
+        encoder.create_layers()
+        logger.debug("Build encoding computation graph")
+        training_c = encoder.build_encoder(x, x_mask, use_noise=True)
 
-    logger.debug("Create predictor")
-    decoder = Decoder(state, rng)
-    decoder.create_layers()
-    logger.debug("Build predicting computation graph")
-    predictions = decoder.build_predictor(training_c, y, y_mask, use_noise=True)
+        logger.debug("Create decoder")
+        decoder = Decoder(state, rng)
+        decoder.create_layers()
+        logger.debug("Build log-likelihood computation graph")
+        predictions = decoder.build_decoder(training_c, y, y_mask)
 
-    logger.debug("Create language model and optimization algorithm")
-    lm_model = LM_Model(
-        cost_layer=predictions,
-        weight_noise_amount=state['weight_noise_amount'],
-        indx_word=state['indx_word_target'],
-        indx_word_src=state['indx_word'],
-        rng=rng)
-    algo = SGD(lm_model, state, train_data) if state['loopIters'] > 0 else 0
+        logger.debug("Build sampling computation graph")
+        sampling_x = TT.lvector("sampling_x")
+        n_steps = TT.lscalar("n_steps")
+        T = TT.scalar("T")
+        sampling_c = encoder.build_encoder(sampling_x, x_mask=False, use_noise=False).out
+        sampling_c = theano.printing.Print("Repr:", attrs=['sum'])(sampling_c)
+        (sample, log_prob), updates = decoder.build_sampler(n_steps, T, sampling_c)
+        logger.debug("Compile sampler")
+        sample_fn = theano.function(
+                inputs=[n_steps, T, sampling_x],
+                outputs=[sample, log_prob],
+                updates=updates,
+                name="sample_fn")
 
-    logger.debug("Run training")
-    main = MainLoop(train_data, None, None, lm_model, algo, state, channel,
-            reset=state['reset'], hooks=None)
-    if state['reload']:
-        main.load()
-    if state['loopIters'] > 0:
-        main.main()
+        logger.debug("Create LM_Model and load dictionaries")
+        lm_model = LM_Model(
+            cost_layer=predictions,
+            sample_fn=sample_fn,
+            weight_noise_amount=state['weight_noise_amount'],
+            indx_word=state['indx_word_target'],
+            indx_word_src=state['indx_word'],
+            rng=rng)
+        lm_model.load_dict()
+        logger.debug("Model params:\n{}".format(
+            pprint.pformat([p.name for p in lm_model.params])))
+        logger.debug("Create SGD")
+        algo = SGD(lm_model, state, train_data, compil=state['loopIters'] > 0)
+        logger.debug("Run training")
+        main = MainLoop(train_data, None, None, lm_model, algo, state, channel,
+                reset=state['reset'],
+                hooks=[RandomSamplePrinter(state, lm_model, train_data,
+                    x, x_mask, y, y_mask)])
+        if state['reload']:
+            main.load()
+        if state['loopIters'] > 0:
+            main.main()
+
+        if state['sampler_test']:
+            # This is a test script: we only sample
+            indx_word = cPickle.load(open(state['word_indx'],'rb'))
+
+            try:
+                while True:
+                    try:
+                        seqin = raw_input('Input Sequence: ')
+                        n_samples = int(raw_input('How many samples? '))
+                        alpha = float(raw_input('Inverse Temperature? '))
+
+                        seqin = seqin.lower()
+                        seqin = seqin.split()
+
+                        seqlen = len(seqin)
+                        seq = numpy.zeros(seqlen+1, dtype='int64')
+                        for idx,sx in enumerate(seqin):
+                            try:
+                                seq[idx] = indx_word[sx]
+                            except:
+                                seq[idx] = indx_word[state['oov']]
+                        seq[-1] = state['null_sym_source']
+
+                    except Exception:
+                        print 'Something wrong with your input! Try again!'
+                        continue
+
+                    sentences = []
+                    all_probs = []
+                    for sidx in xrange(n_samples):
+                        #import ipdb; ipdb.set_trace()
+                        [values, probs] = lm_model.sample_fn(3 * seqlen, alpha, seq)
+                        sen = []
+                        for k in xrange(values.shape[0]):
+                            if lm_model.word_indxs[values[k]] == '<eol>':
+                                break
+                            sen.append(lm_model.word_indxs[values[k]])
+                        sentences.append(" ".join(sen))
+                        all_probs.append(-probs)
+                    sprobs = numpy.argsort(all_probs)
+                    for pidx in sprobs:
+                        print pidx,"(%f):"%(-all_probs[pidx]),sentences[pidx]
+                    print
+
+            except KeyboardInterrupt:
+                print 'Interrupted'
+                pass
+    except:
+        logger.debug("Exception in the main function:")
+        traceback.print_exc()
+
 
 def prototype_state():
     state = {}
@@ -731,9 +1002,8 @@ def prototype_state():
     state['seqlen'] = 30
 
     # Sampling hook settings
-    state['sample_reset'] = False
-    state['sample_n'] = 1
-    state['sample_max'] = 3
+    state['n_samples'] = 3
+    state['n_examples'] = 3
 
     # Starts a funny sampling regime
     state['sampler_test'] = True
@@ -743,7 +1013,7 @@ def prototype_state():
     state['reload'] = True
 
     # Number of batches to process
-    state['loopIters'] = 50000000
+    state['loopIters'] = 3000000
     # Maximum number of minutes to run
     state['timeStop'] = 24*60*7
     # Error level to stop at
@@ -757,14 +1027,17 @@ def prototype_state():
     # Frequency of training error reports (in number of batches)
     state['trainFreq'] = 1
     # Frequency of running hooks
-    state['hookFreq'] = 100
+    state['hookFreq'] = 10
     # Validation frequency
     state['validFreq'] = 500
     # Model saving frequency (in minutes)
-    state['saveFreq'] = 5
+    state['saveFreq'] = 1
 
     # Turns on profiling of training phase
     state['profile'] = 0
+
+    # Raise exception if nan
+    state['on_nan'] = 'raise'
 
     state['prefix'] = 'model_phrase_'
 
@@ -781,5 +1054,7 @@ def experiment(state, channel):
     do_experiment(state, channel)
 
 if __name__ == "__main__":
-    do_experiment(prototype_state(), None)
-
+    state = prototype_state()
+    options = eval("dict({})".format(", ".join(sys.argv[1:]))) if len(sys.argv) > 1 else dict()
+    state.update(options)
+    do_experiment(state, None)
