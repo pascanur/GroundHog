@@ -57,11 +57,12 @@ def none_if_zero(x):
     return x
 
 def dbg_sum(text, x):
-    if not isinstance(x, TT.TensorVariable):
-        x.out = theano.printing.Print(text, attrs=['sum'])(x.out)
-        return x
-    else:
-        return theano.printing.Print(text, attrs=['sum'])(x)
+    return x
+    #if not isinstance(x, TT.TensorVariable):
+    #    x.out = theano.printing.Print(text, attrs=['sum'])(x.out)
+    #    return x
+    #else:
+    #    return theano.printing.Print(text, attrs=['sum'])(x)
 
 def get_data(state, rng):
 
