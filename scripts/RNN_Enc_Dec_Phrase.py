@@ -64,136 +64,6 @@ def dbg_sum(text, x):
     #else:
     #    return theano.printing.Print(text, attrs=['sum'])(x)
 
-def get_data(state, rng):
-
-    def out_format (x, y, new_format=None):
-        """A callback given to the iterator to transform data in suitable format
-
-        :type x: list
-        :param x: list of numpy.array's, each array is a batch of phrases
-            in some of source languages
-
-        :type y: list
-        :param y: same as x but for target languages
-
-        :param new_format: a wrapper to be applied on top of returned value
-
-        :returns: a tuple (X, Xmask, Y, Ymask) where
-            - X is a matrix, each column contains a source sequence
-            - Xmask is 0-1 matrix, each column marks the sequence positions in X
-            - Y and Ymask are matrices of the same format for target sequences
-            OR new_format applied to the tuple
-
-        Notes:
-        * actually works only with x[0] and y[0]
-        * len(x[0]) thus is just the minibatch size
-        * len(x[0][idx]) is the size of sequence idx
-        """
-
-        # Similar length for all source sequences
-        mx = numpy.minimum(state['seqlen'], max([len(xx) for xx in x[0]]))+1
-        # Similar length for all target sequences
-        my = numpy.minimum(state['seqlen'], max([len(xx) for xx in y[0]]))+1
-        # Just batch size
-        n = state['bs'] # FIXME: may become inefficient later with a large minibatch
-
-        X = numpy.zeros((mx, n), dtype='int64')
-        Y0 = numpy.zeros((my, n), dtype='int64')
-        Y = numpy.zeros((my, n), dtype='int64')
-        Xmask = numpy.zeros((mx, n), dtype='float32')
-        Ymask = numpy.zeros((my, n), dtype='float32')
-
-        # Fill X and Xmask
-        for idx in xrange(len(x[0])):
-            # Insert sequence idx in a column of matrix X
-            if mx < len(x[0][idx]):
-                # If sequence idx it too long,
-                # we either choose random subsequence or just take a prefix
-                if state['randstart']:
-                    stx = numpy.random.randint(0, len(x[0][idx]) - mx)
-                else:
-                    stx = 0
-                X[:mx, idx] = x[0][idx][stx:stx+mx]
-            else:
-                X[:len(x[0][idx]), idx] = x[0][idx][:mx]
-
-            # Mark the end of phrase
-            if len(x[0][idx]) < mx:
-                X[len(x[0][idx]):, idx] = state['null_sym_source']
-
-            # Initialize Xmask column with ones in all positions that
-            # were just set in X
-            Xmask[:len(x[0][idx]), idx] = 1.
-            if len(x[0][idx]) < mx:
-                Xmask[len(x[0][idx]), idx] = 1.
-
-        # Fill Y and Ymask in the same way as X and Xmask in the previous loop
-        for idx in xrange(len(y[0])):
-            Y0[:len(y[0][idx]), idx] = y[0][idx][:my]
-            if len(y[0][idx]) < my:
-                Y0[len(y[0][idx]):, idx] = state['null_sym_target']
-            Ymask[:len(y[0][idx]), idx] = 1.
-            if len(y[0][idx]) < my:
-                Ymask[len(y[0][idx]), idx] = 1.
-
-        Y = Y0.copy()
-
-        null_inputs = numpy.zeros(X.shape[1])
-
-        # We say that an input pair is valid if both:
-        # - either source sequence or target sequence is non-empty
-        # - source sequence and target sequence have null_sym ending
-        # Why did not we filter them earlier?
-        for idx in xrange(X.shape[1]):
-            if numpy.sum(Xmask[:,idx]) == 0 and numpy.sum(Ymask[:,idx]) == 0:
-                null_inputs[idx] = 1
-            if Xmask[-1,idx] and X[-1,idx] != state['null_sym_source']:
-                null_inputs[idx] = 1
-            if Ymask[-1,idx] and Y0[-1,idx] != state['null_sym_target']:
-                null_inputs[idx] = 1
-
-        valid_inputs = 1. - null_inputs
-
-        # Leave only valid inputs
-        X = X[:,valid_inputs.nonzero()[0]]
-        Y = Y[:,valid_inputs.nonzero()[0]]
-        Y0 = Y0[:,valid_inputs.nonzero()[0]]
-        Xmask = Xmask[:,valid_inputs.nonzero()[0]]
-        Ymask = Ymask[:,valid_inputs.nonzero()[0]]
-
-        if len(valid_inputs.nonzero()[0]) <= 0:
-            return None
-
-        if n == 1:
-            X = X[:,0]
-            Y = Y[:,0]
-            Y0 = Y0[:,0]
-            Xmask = Xmask[:,0]
-            Ymask = Ymask[:,0]
-        if new_format:
-            # Are Y and Y0 different?
-            return new_format(X, Xmask, Y0, Y, Ymask)
-        else:
-            return X, Xmask, Y, Ymask
-
-    new_format = lambda x,xm, y0, y, ym: {'x' : x, 'x_mask' :xm,
-            'y': y0, 'y_mask' : ym}
-
-    train_data = TMIteratorPytables(
-        batch_size=int(state['bs']),
-        target_lfiles=state['target'],
-        source_lfiles=state['source'],
-        output_format=lambda *args : out_format(*args,
-                                                  new_format=new_format),
-        can_fit=False,
-        queue_size=10,
-        cache_size=state['cache_size'],
-        shuffle=state['shuffle'])
-
-    valid_data = None
-    test_data = None
-    return train_data, valid_data, test_data
-
 class Maxout(object):
 
     def __init__(self, maxout_part):
@@ -735,6 +605,202 @@ class Decoder(EncoderDecoderBase):
                 name="sampler_scan")
         return (outputs[0], outputs[1].sum()), updates
 
+class RNNEncoderDecoder(object):
+
+    def __init__(self, state, rng):
+        self.state = state
+        self.rng = rng
+
+    def build(self):
+        logger.debug("Create input variables")
+        if state['bs'] == 1:
+            self.x = TT.lvector('x')
+            self.x_mask = TT.vector('x_mask')
+            self.y = TT.lvector('y')
+            self.y_mask = TT.vector('y_mask')
+        else:
+            self.x = TT.lmatrix('x')
+            self.x_mask = TT.matrix('x_mask')
+            self.y = TT.lmatrix('y')
+            self.y_mask = TT.matrix('y_mask')
+
+        logger.debug("Create encoder")
+        self.encoder = Encoder(self.state, self.rng)
+        self.encoder.create_layers()
+        logger.debug("Build encoding computation graph")
+        training_c = self.encoder.build_encoder(self.x, self.x_mask, use_noise=True)
+
+        logger.debug("Create decoder")
+        decoder = Decoder(self.state, self.rng)
+        decoder.create_layers()
+        logger.debug("Build log-likelihood computation graph")
+        self.predictions = decoder.build_decoder(training_c, self.y, self.y_mask)
+
+        logger.debug("Build sampling computation graph")
+        self.sampling_x = TT.lvector("sampling_x")
+        self.n_steps = TT.lscalar("n_steps")
+        self.T = TT.scalar("T")
+        sampling_c = self.encoder.build_encoder(
+                self.sampling_x, x_mask=False, use_noise=False).out
+        sampling_c = dbg_sum("Repr:", sampling_c)
+        (self.sample, self.sample_log_prob), self.sampling_updates =\
+            decoder.build_sampler(self.n_steps, self.T, sampling_c)
+
+    def create_lm_model(self):
+        if hasattr(self, 'lm_model'):
+            return self.lm_model
+        self.lm_model = LM_Model(
+            cost_layer=self.predictions,
+            sample_fn=self.create_sampler(),
+            weight_noise_amount=state['weight_noise_amount'],
+            indx_word=state['indx_word_target'],
+            indx_word_src=state['indx_word'],
+            rng=self.rng)
+        self.lm_model.load_dict()
+        logger.debug("Model params:\n{}".format(
+            pprint.pformat([p.name for p in self.lm_model.params])))
+        return self.lm_model
+
+    def create_sampler(self):
+        if hasattr(self, 'sample_fn'):
+            return self.sample_fn
+        self.sample_fn = theano.function(
+                inputs=[self.n_steps, self.T, self.sampling_x],
+                outputs=[self.sample, self.sample_log_prob],
+                updates=self.sampling_updates,
+                name="sample_fn")
+        return self.sample_fn
+
+def get_data(state, rng):
+
+    def out_format (x, y, new_format=None):
+        """A callback given to the iterator to transform data in suitable format
+
+        :type x: list
+        :param x: list of numpy.array's, each array is a batch of phrases
+            in some of source languages
+
+        :type y: list
+        :param y: same as x but for target languages
+
+        :param new_format: a wrapper to be applied on top of returned value
+
+        :returns: a tuple (X, Xmask, Y, Ymask) where
+            - X is a matrix, each column contains a source sequence
+            - Xmask is 0-1 matrix, each column marks the sequence positions in X
+            - Y and Ymask are matrices of the same format for target sequences
+            OR new_format applied to the tuple
+
+        Notes:
+        * actually works only with x[0] and y[0]
+        * len(x[0]) thus is just the minibatch size
+        * len(x[0][idx]) is the size of sequence idx
+        """
+
+        # Similar length for all source sequences
+        mx = numpy.minimum(state['seqlen'], max([len(xx) for xx in x[0]]))+1
+        # Similar length for all target sequences
+        my = numpy.minimum(state['seqlen'], max([len(xx) for xx in y[0]]))+1
+        # Just batch size
+        n = state['bs'] # FIXME: may become inefficient later with a large minibatch
+
+        X = numpy.zeros((mx, n), dtype='int64')
+        Y0 = numpy.zeros((my, n), dtype='int64')
+        Y = numpy.zeros((my, n), dtype='int64')
+        Xmask = numpy.zeros((mx, n), dtype='float32')
+        Ymask = numpy.zeros((my, n), dtype='float32')
+
+        # Fill X and Xmask
+        for idx in xrange(len(x[0])):
+            # Insert sequence idx in a column of matrix X
+            if mx < len(x[0][idx]):
+                # If sequence idx it too long,
+                # we either choose random subsequence or just take a prefix
+                if state['randstart']:
+                    stx = numpy.random.randint(0, len(x[0][idx]) - mx)
+                else:
+                    stx = 0
+                X[:mx, idx] = x[0][idx][stx:stx+mx]
+            else:
+                X[:len(x[0][idx]), idx] = x[0][idx][:mx]
+
+            # Mark the end of phrase
+            if len(x[0][idx]) < mx:
+                X[len(x[0][idx]):, idx] = state['null_sym_source']
+
+            # Initialize Xmask column with ones in all positions that
+            # were just set in X
+            Xmask[:len(x[0][idx]), idx] = 1.
+            if len(x[0][idx]) < mx:
+                Xmask[len(x[0][idx]), idx] = 1.
+
+        # Fill Y and Ymask in the same way as X and Xmask in the previous loop
+        for idx in xrange(len(y[0])):
+            Y0[:len(y[0][idx]), idx] = y[0][idx][:my]
+            if len(y[0][idx]) < my:
+                Y0[len(y[0][idx]):, idx] = state['null_sym_target']
+            Ymask[:len(y[0][idx]), idx] = 1.
+            if len(y[0][idx]) < my:
+                Ymask[len(y[0][idx]), idx] = 1.
+
+        Y = Y0.copy()
+
+        null_inputs = numpy.zeros(X.shape[1])
+
+        # We say that an input pair is valid if both:
+        # - either source sequence or target sequence is non-empty
+        # - source sequence and target sequence have null_sym ending
+        # Why did not we filter them earlier?
+        for idx in xrange(X.shape[1]):
+            if numpy.sum(Xmask[:,idx]) == 0 and numpy.sum(Ymask[:,idx]) == 0:
+                null_inputs[idx] = 1
+            if Xmask[-1,idx] and X[-1,idx] != state['null_sym_source']:
+                null_inputs[idx] = 1
+            if Ymask[-1,idx] and Y0[-1,idx] != state['null_sym_target']:
+                null_inputs[idx] = 1
+
+        valid_inputs = 1. - null_inputs
+
+        # Leave only valid inputs
+        X = X[:,valid_inputs.nonzero()[0]]
+        Y = Y[:,valid_inputs.nonzero()[0]]
+        Y0 = Y0[:,valid_inputs.nonzero()[0]]
+        Xmask = Xmask[:,valid_inputs.nonzero()[0]]
+        Ymask = Ymask[:,valid_inputs.nonzero()[0]]
+
+        if len(valid_inputs.nonzero()[0]) <= 0:
+            return None
+
+        if n == 1:
+            X = X[:,0]
+            Y = Y[:,0]
+            Y0 = Y0[:,0]
+            Xmask = Xmask[:,0]
+            Ymask = Ymask[:,0]
+        if new_format:
+            # Are Y and Y0 different?
+            return new_format(X, Xmask, Y0, Y, Ymask)
+        else:
+            return X, Xmask, Y, Ymask
+
+    new_format = lambda x,xm, y0, y, ym: {'x' : x, 'x_mask' :xm,
+            'y': y0, 'y_mask' : ym}
+
+    train_data = TMIteratorPytables(
+        batch_size=int(state['bs']),
+        target_lfiles=state['target'],
+        source_lfiles=state['source'],
+        output_format=lambda *args : out_format(*args,
+                                                  new_format=new_format),
+        can_fit=False,
+        queue_size=10,
+        cache_size=state['cache_size'],
+        shuffle=state['shuffle'])
+
+    valid_data = None
+    test_data = None
+    return train_data, valid_data, test_data
+
 class RandomSamplePrinter(object):
 
     def __init__(self, state, model, train_iter, var_x, var_x_mask, var_y, var_y_mask):
@@ -771,79 +837,28 @@ def do_experiment(state, channel):
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
     logger.debug("Starting state: {}".format(pprint.pformat(state)))
 
-    rng = numpy.random.RandomState(state['seed'])
-
-    logger.debug("Load data")
-    if state['loopIters'] > 0:
-        train_data, _1, _2 = get_data(state, rng)
-    else:
-        # Skip loading if no training is planned
-        train_data = None
-
     try:
-        logger.debug("Create input variables")
-        if state['bs'] == 1:
-            x = TT.lvector('x')
-            x_mask = TT.vector('x_mask')
-            y = TT.lvector('y')
-            y_mask = TT.vector('y_mask')
-        else:
-            x = TT.lmatrix('x')
-            x_mask = TT.matrix('x_mask')
-            y = TT.lmatrix('y')
-            y_mask = TT.matrix('y_mask')
+        rng = numpy.random.RandomState(state['seed'])
 
-        logger.debug("Create encoder")
-        encoder = Encoder(state, rng)
-        encoder.create_layers()
-        logger.debug("Build encoding computation graph")
-        training_c = encoder.build_encoder(x, x_mask, use_noise=True)
+        enc_dec = RNNEncoderDecoder(state, rng)
+        enc_dec.build()
+        lm_model = enc_dec.create_lm_model()
 
-        logger.debug("Create decoder")
-        decoder = Decoder(state, rng)
-        decoder.create_layers()
-        logger.debug("Build log-likelihood computation graph")
-        predictions = decoder.build_decoder(training_c, y, y_mask)
-
-        logger.debug("Build sampling computation graph")
-        sampling_x = TT.lvector("sampling_x")
-        n_steps = TT.lscalar("n_steps")
-        T = TT.scalar("T")
-        sampling_c = encoder.build_encoder(sampling_x, x_mask=False, use_noise=False).out
-        sampling_c = dbg_sum("Repr:", sampling_c)
-        (sample, log_prob), updates = decoder.build_sampler(n_steps, T, sampling_c)
-        logger.debug("Compile sampler")
-        sample_fn = theano.function(
-                inputs=[n_steps, T, sampling_x],
-                outputs=[sample, log_prob],
-                updates=updates,
-                name="sample_fn")
-
-        logger.debug("Create LM_Model and load dictionaries")
-        lm_model = LM_Model(
-            cost_layer=predictions,
-            sample_fn=sample_fn,
-            weight_noise_amount=state['weight_noise_amount'],
-            indx_word=state['indx_word_target'],
-            indx_word_src=state['indx_word'],
-            rng=rng)
-        lm_model.load_dict()
-        logger.debug("Model params:\n{}".format(
-            pprint.pformat([p.name for p in lm_model.params])))
-        logger.debug("Create SGD")
-        algo = SGD(lm_model, state, train_data, compil=state['loopIters'] > 0)
-        logger.debug("Run training")
-        main = MainLoop(train_data, None, None, lm_model, algo, state, channel,
-                reset=state['reset'],
-                hooks=[RandomSamplePrinter(state, lm_model, train_data,
-                    x, x_mask, y, y_mask)])
-        if state['reload']:
-            main.load()
         if state['loopIters'] > 0:
-            main.main()
+            logger.debug("Load data")
+            train_data, _1, _2 = get_data(state, rng)
+            algo = SGD(lm_model, state, train_data)
+            logger.debug("Run training")
+            main = MainLoop(train_data, None, None, lm_model, algo, state, channel,
+                    reset=state['reset'],
+                    hooks=[RandomSamplePrinter(state, lm_model, train_data)])
+            if state['reload']:
+                main.load()
+            if state['loopIters'] > 0:
+                main.main()
 
-        if state['sampler_test']:
-            # This is a test script: we only sample
+        if state['sample']:
+            lm_model.load(state['model_path'])
             indx_word = cPickle.load(open(state['word_indx'],'rb'))
 
             try:
@@ -1007,7 +1022,7 @@ def prototype_state():
     state['n_examples'] = 3
 
     # Starts a funny sampling regime
-    state['sampler_test'] = True
+    state['sample'] = True
     state['seed'] = 1234
 
     # Specifies whether old model should be reloaded first
@@ -1040,7 +1055,9 @@ def prototype_state():
     # Raise exception if nan
     state['on_nan'] = 'raise'
 
+    # Default paths
     state['prefix'] = 'model_phrase_'
+    state['model_path'] = 'model_phrase_model.npz'
 
     # When set to 0 each new model dump will be saved in a new file
     state['overwrite'] = 1
