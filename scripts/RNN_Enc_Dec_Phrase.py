@@ -810,7 +810,7 @@ def do_experiment(state, channel):
         n_steps = TT.lscalar("n_steps")
         T = TT.scalar("T")
         sampling_c = encoder.build_encoder(sampling_x, x_mask=False, use_noise=False).out
-        sampling_c = theano.printing.Print("Repr:", attrs=['sum'])(sampling_c)
+        sampling_c = dbg_sum("Repr:", sampling_c)
         (sample, log_prob), updates = decoder.build_sampler(n_steps, T, sampling_c)
         logger.debug("Compile sampler")
         sample_fn = theano.function(
