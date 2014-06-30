@@ -178,7 +178,10 @@ class Container(object):
                             .format(p.get_value().shape, vals[p.name].shape, p.name))
                 p.set_value(vals[p.name])
             else:
-                raise Exception("Unknown parameter {}".format(p.name))
+                raise Exception("No parameter {} given".format(p.name))
+        unknown = {p.name for p in self.params} - set(vals.keys())
+        if len(unknown):
+            raise Exception("Unknown parameters {} given".format(unknown))
 
 class Layer(Container):
     """
