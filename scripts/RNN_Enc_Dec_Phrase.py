@@ -899,7 +899,7 @@ def parse_input(state, word2idx, line, raise_unk=False):
     return seq
 
 def do_experiment(state, channel):
-    logging.basicConfig(level=logging.DEBUG, format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
+    logging.basicConfig(level=getattr(logging, state['level']), format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
     logger.debug("Starting state: {}".format(pprint.pformat(state)))
 
     # Things not supported currently
@@ -1055,6 +1055,9 @@ def prototype_state():
 
     # Random seed
     state['seed'] = 1234
+
+    # Logging level
+    state['level'] = 'DEBUG'
 
     # Data
     state['source'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.en.h5"]
