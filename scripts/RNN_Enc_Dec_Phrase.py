@@ -716,11 +716,8 @@ class RNNEncoderDecoder(object):
         if batch:
             return self.score_fn
         def scorer(x, y):
-            x_mask = numpy.zeros(state['seqlen'], dtype="float32")
-            y_mask = numpy.zeros(state['seqlen'], dtype="float32")
-            x_mask[:x.shape[0]] = 1
-            y_mask[:y.shape[0]] = 1
-
+            x_mask = numpy.ones(x.shape[0], dtype="float32")
+            y_mask = numpy.ones(y.shape[0], dtype="float32")
             return self.score_fn(x[:, None], y[:, None],
                     x_mask[:, None], y_mask[:, None])
         return scorer
