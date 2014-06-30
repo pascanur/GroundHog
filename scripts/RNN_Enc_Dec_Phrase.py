@@ -20,6 +20,7 @@ from groundhog.layers import \
 from groundhog.models import LM_Model
 from theano import scan
 
+import math
 import numpy
 import theano
 import theano.tensor as TT
@@ -29,6 +30,7 @@ import traceback
 import sys
 import pprint
 import cPickle
+import time
 
 theano.config.allow_gc = True
 
@@ -58,11 +60,19 @@ def none_if_zero(x):
 
 def dbg_sum(text, x):
     return x
-    #if not isinstance(x, TT.TensorVariable):
-    #    x.out = theano.printing.Print(text, attrs=['sum'])(x.out)
-    #    return x
-    #else:
-    #    return theano.printing.Print(text, attrs=['sum'])(x)
+    if not isinstance(x, TT.TensorVariable):
+        x.out = theano.printing.Print(text, attrs=['sum'])(x.out)
+        return x
+    else:
+        return theano.printing.Print(text, attrs=['sum'])(x)
+
+def dbg_hook(hook, x):
+    return x
+    if not isinstance(x, TT.TensorVariable):
+        x.out = theano.printing.Print(global_fn=hook)(x.out)
+        return x
+    else:
+        return theano.printing.Print(global_fn=hook)(x)
 
 class Maxout(object):
 
@@ -236,6 +246,14 @@ class Encoder(EncoderDecoderBase):
             dbg_sum("Input embeddings:", input_signals[-1])
             dbg_sum("Update embeddings:", update_signals[-1])
             dbg_sum("Reset embeddings:", reset_signals[-1])
+        def inp_hook(op, x):
+            if x.ndim == 2:
+                values = x.sum(1).flatten()
+            else:
+                values = x.sum()
+            logger.debug("Input signal: {}".format(values))
+        input_signals[-1] = dbg_hook(inp_hook, input_signals[-1])
+
 
         # Hidden layers.
         # Shape in case of matrix input: (max_seq_len, batch_size, dim)
@@ -257,6 +275,13 @@ class Encoder(EncoderDecoderBase):
                     gater_below=none_if_zero(update_signals[level]),
                     reseter_below=none_if_zero(reset_signals[level]),
                     use_noise=use_noise))
+        def hid_hook(op, x):
+            if x.ndim == 3:
+                values = x.sum(2).flatten()
+            else:
+                values = x.sum()
+            logger.debug("Encoder hiddens: {}".format(values))
+        hidden_layers[-1] = dbg_hook(hid_hook, hidden_layers[-1])
 
         # If we no stack of RNN but only a usual one,
         # then the last hidden state is used as a representation.
@@ -436,6 +461,7 @@ class Decoder(EncoderDecoderBase):
         #   (max_seq_len, batch_size, dim)
         # Shape if for_sampling:
         #   (dim,)
+        c = dbg_hook(lambda _, x : logger.debug("Representation: {}".format(x.sum())), c)
         if for_sampling:
             replicated_c = c
         else:
@@ -504,10 +530,17 @@ class Decoder(EncoderDecoderBase):
                     **(dict(state_before=init_states[level])
                         if for_sampling
                         else dict(init_state=init_states[level],
-                            batch_size=self.state['bs'],
+                            batch_size=y.shape[1] if y.ndim == 2 else 1,
                             nsteps=y.shape[0]))
                         ))
-            hidden_layers[-1] = dbg_sum("Hidden:", hidden_layers[-1])
+            def hid_hook(op, x):
+                if x.ndim == 3:
+                    values = x.sum(2).flatten()
+                else:
+                    values = x.sum()
+                logger.debug("Decoder hiddens: {}".format(values))
+
+            hidden_layers[-1] = dbg_hook(hid_hook, hidden_layers[-1])
 
         # In hidden_layers we do no have the initial state, but we need it.
         # Instead of it we have the last one, which we do not need.
@@ -533,7 +566,8 @@ class Decoder(EncoderDecoderBase):
             readout += self.hidden_readouts[level](read_from)
         if self.state['bigram']:
             if for_sampling:
-                readout += self.prev_word_readout(approx_embeddings)
+                check_first_word = y > 0 if state['check_first_word'] else TT.constant(1.)
+                readout += check_first_word * self.prev_word_readout(approx_embeddings).out
             else:
                 if y.ndim == 1:
                     readout += Shift()(self.prev_word_readout(approx_embeddings).reshape(
@@ -549,9 +583,16 @@ class Decoder(EncoderDecoderBase):
                                 readout.out.shape)
         for fun in self.output_nonlinearities:
             readout = fun(readout)
+        def readout_hook(op, x):
+            if x.ndim == 2:
+                values = x.sum(1).flatten()
+            else:
+                values = x.sum()
+            logger.debug("Readouts: {}".format(values))
+        readout = dbg_hook(readout_hook, readout)
+
 
         if for_sampling:
-            dbg_sum("Readout:", readout)
             sample = self.output_layer.get_sample(
                     state_below=readout,
                     temp=T)
@@ -603,7 +644,7 @@ class Decoder(EncoderDecoderBase):
                 non_sequences=params,
                 n_steps=n_steps,
                 name="sampler_scan")
-        return (outputs[0], outputs[1].sum()), updates
+        return (outputs[0], outputs[1]), updates
 
 class RNNEncoderDecoder(object):
 
@@ -613,16 +654,11 @@ class RNNEncoderDecoder(object):
 
     def build(self):
         logger.debug("Create input variables")
-        if state['bs'] == 1:
-            self.x = TT.lvector('x')
-            self.x_mask = TT.vector('x_mask')
-            self.y = TT.lvector('y')
-            self.y_mask = TT.vector('y_mask')
-        else:
-            self.x = TT.lmatrix('x')
-            self.x_mask = TT.matrix('x_mask')
-            self.y = TT.lmatrix('y')
-            self.y_mask = TT.matrix('y_mask')
+        self.x = TT.lmatrix('x')
+        self.x_mask = TT.matrix('x_mask')
+        self.y = TT.lmatrix('y')
+        self.y_mask = TT.matrix('y_mask')
+        self.inputs = [self.x, self.y, self.x_mask, self.y_mask]
 
         logger.debug("Create encoder")
         self.encoder = Encoder(self.state, self.rng)
@@ -642,7 +678,6 @@ class RNNEncoderDecoder(object):
         self.T = TT.scalar("T")
         sampling_c = self.encoder.build_encoder(
                 self.sampling_x, x_mask=False, use_noise=False).out
-        sampling_c = dbg_sum("Repr:", sampling_c)
         (self.sample, self.sample_log_prob), self.sampling_updates =\
             decoder.build_sampler(self.n_steps, self.T, sampling_c)
 
@@ -664,12 +699,31 @@ class RNNEncoderDecoder(object):
     def create_sampler(self):
         if hasattr(self, 'sample_fn'):
             return self.sample_fn
+        logger.debug("Compile sampler")
         self.sample_fn = theano.function(
                 inputs=[self.n_steps, self.T, self.sampling_x],
                 outputs=[self.sample, self.sample_log_prob],
                 updates=self.sampling_updates,
                 name="sample_fn")
         return self.sample_fn
+
+    def create_scorer(self, batch=False):
+        if not hasattr(self, 'score_fn'):
+            logger.debug("Compile scorer")
+            self.score_fn = theano.function(
+                    inputs=self.inputs,
+                    outputs=[self.predictions.word_probs])
+        if batch:
+            return self.score_fn
+        def scorer(x, y):
+            x_mask = numpy.zeros(state['seqlen'], dtype="float32")
+            y_mask = numpy.zeros(state['seqlen'], dtype="float32")
+            x_mask[:x.shape[0]] = 1
+            y_mask[:y.shape[0]] = 1
+
+            return self.score_fn(x[:, None], y[:, None],
+                    x_mask[:, None], y_mask[:, None])
+        return scorer
 
 def get_data(state, rng):
 
@@ -803,7 +857,7 @@ def get_data(state, rng):
 
 class RandomSamplePrinter(object):
 
-    def __init__(self, state, model, train_iter, var_x, var_x_mask, var_y, var_y_mask):
+    def __init__(self, state, model, train_iter):
         args = dict(locals())
         args.pop('self')
         self.__dict__.update(**args)
@@ -833,9 +887,30 @@ class RandomSamplePrinter(object):
                 self.model.get_samples(self.state['seqlen'] + 1, self.state['n_samples'], x[:len(x_words)])
                 sample_idx += 1
 
+def parse_input(state, word2idx, line, raise_unk=False):
+    seqin = line.split()
+    seqlen = len(seqin)
+    seq = numpy.zeros(seqlen+1, dtype='int64')
+    for idx,sx in enumerate(seqin):
+        try:
+            seq[idx] = word2idx[sx]
+        except:
+            if raise_unk:
+                raise
+            seq[idx] = word2idx[state['oov']]
+    seq[-1] = state['null_sym_source']
+    return seq
+
 def do_experiment(state, channel):
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
     logger.debug("Starting state: {}".format(pprint.pformat(state)))
+
+    # Things not supported currently
+    assert state['avg_word'] == False
+    assert state['bias_code'] == True
+    assert state['mult_out'] == False
+    assert state['bs'] > 1
+    assert int(state['score']) + int(state['sample']) <= 1
 
     try:
         rng = numpy.random.RandomState(state['seed'])
@@ -857,53 +932,122 @@ def do_experiment(state, channel):
             if state['loopIters'] > 0:
                 main.main()
 
+        if state["score_all"]:
+            lm_model.load(state['model_path'])
+            score_file = open(state["score_file"], "w")
+            data_iter, _1, _2 = get_data(state, rng)
+
+            logger.info("Compiling score function")
+            scorer = enc_dec.create_scorer(batch=True)
+
+            count = 0
+            n_samples = 0
+            logger.info('Scoring phrases')
+            for batch in data_iter:
+                if batch == None:
+                    continue
+                st = time.time()
+                [probs] = scorer(batch['x'], batch['y'],
+                        batch['x_mask'], batch['y_mask'])
+                scores = -numpy.log(probs).sum(axis=0)
+                up_time = time.time() - st
+                for s in scores:
+                    print >>score_file, "{:.5f}".format(float(s))
+
+                n_samples += batch['x'].shape[1]
+                count += 1
+
+                if state['flush_scores'] >= 1 and count % state['flush_scores'] == 0:
+                    score_file.flush()
+                    logger.debug("Scores flushed")
+                logger.debug("{} batches, {} samples, {} per sample; example scores: {}".format(
+                    count, n_samples, up_time/scores.shape[0], scores[:5]))
+            logger.info("Done")
+            score_file.flush()
+            score_file.close()
+
+        numpy.set_printoptions(precision=4)
+
+        if state['score']:
+            lm_model.load(state['model_path'])
+            indx_word_src = cPickle.load(open(state['word_indx'],'rb'))
+            indx_word_trgt = cPickle.load(open(state['word_indx_trgt'], 'rb'))
+            scorer = enc_dec.create_scorer()
+            try:
+                def print_scores(src_seq, trgt_seq):
+                    [probs] = scorer(src_seq, trgt_seq)
+                    sum_log = -numpy.sum(numpy.log(probs))
+                    print "Probs: {}, cost: {}, prob: {}".format(
+                            probs.flatten(), sum_log, math.exp(-sum_log))
+                    return sum_log
+                if state['score_batch']:
+                    data_iter, _1, _2 = get_data(state, rng)
+                    batch = next(data_iter)
+                    batch_size = batch['x'].shape[1]
+                    sum_cost = 0
+                    for i in range(batch_size):
+                        x = batch['x'][:, i]
+                        y = batch['y'][:, i]
+                        x = x[:numpy.where(x == state['null_sym_source'])[0][0] + 1]
+                        y = y[:numpy.where(y == state['null_sym_target'])[0][0] + 1]
+                        str_x = " ".join(map(lambda idx : lm_model.word_indxs_src[idx], x))
+                        str_y = " ".join(map(lambda idx : lm_model.word_indxs[idx], y))
+                        print "{} --> {}".format(list(x), list(y))
+                        print "{} --> {}".format(str_x, str_y)
+                        cost = print_scores(x, y)
+                        sum_cost += cost
+                    print sum_cost
+                    print enc_dec.predictions.cost.eval({getattr(enc_dec, var) : batch[var] for var in batch.keys()})
+                while True:
+                    try:
+                        src_line = raw_input('Source sequence: ')
+                        trgt_line = raw_input('Target sequence: ')
+                        src_seq = parse_input(state, indx_word_src, src_line, raise_unk=True)
+                        trgt_seq = parse_input(state, indx_word_trgt, trgt_line, raise_unk=True)
+                        print "Binarized source: ", src_seq
+                        print "Binarized target: ", trgt_seq
+                        print_scores(src_seq, trgt_seq)
+                    except Exception:
+                        traceback.print_exc()
+            except KeyboardInterrupt:
+                print 'Interrupted'
+
         if state['sample']:
             lm_model.load(state['model_path'])
             indx_word = cPickle.load(open(state['word_indx'],'rb'))
-
             try:
                 while True:
                     try:
                         seqin = raw_input('Input Sequence: ')
                         n_samples = int(raw_input('How many samples? '))
                         alpha = float(raw_input('Inverse Temperature? '))
-
-                        seqin = seqin.lower()
-                        seqin = seqin.split()
-
-                        seqlen = len(seqin)
-                        seq = numpy.zeros(seqlen+1, dtype='int64')
-                        for idx,sx in enumerate(seqin):
-                            try:
-                                seq[idx] = indx_word[sx]
-                            except:
-                                seq[idx] = indx_word[state['oov']]
-                        seq[-1] = state['null_sym_source']
-
+                        seq = parse_input(state, indx_word, seqin)
                     except Exception:
-                        print 'Something wrong with your input! Try again!'
+                        print "Exception while parsing your input:"
+                        traceback.print_exc()
                         continue
-
                     sentences = []
                     all_probs = []
+                    sum_log_probs = []
                     for sidx in xrange(n_samples):
-                        #import ipdb; ipdb.set_trace()
-                        [values, probs] = lm_model.sample_fn(3 * seqlen, alpha, seq)
+                        logger.debug("Sample {}".format(sidx))
+                        [values, probs] = lm_model.sample_fn(3 * len(seq) - 3, alpha, seq)
                         sen = []
                         for k in xrange(values.shape[0]):
                             if lm_model.word_indxs[values[k]] == '<eol>':
                                 break
                             sen.append(lm_model.word_indxs[values[k]])
                         sentences.append(" ".join(sen))
-                        all_probs.append(-probs)
-                    sprobs = numpy.argsort(all_probs)
+                        if not state['sample_all_probs']:
+                            probs = numpy.array(probs[:len(sen) + 1])
+                        all_probs.append(numpy.exp(-probs))
+                        sum_log_probs.append(-numpy.sum(probs))
+                    sprobs = numpy.argsort(sum_log_probs)
                     for pidx in sprobs:
-                        print pidx,"(%f):"%(-all_probs[pidx]),sentences[pidx]
+                        print "{}: {} {} {}".format(pidx, -sum_log_probs[pidx], all_probs[pidx], sentences[pidx])
                     print
-
             except KeyboardInterrupt:
                 print 'Interrupted'
-                pass
     except:
         logger.debug("Exception in the main function:")
         traceback.print_exc()
@@ -912,11 +1056,16 @@ def do_experiment(state, channel):
 def prototype_state():
     state = {}
 
+    # Random seed
+    state['seed'] = 1234
+
+    # Data
     state['source'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.en.h5"]
     state['target'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.fr.h5"]
     state['indx_word'] = "/data/lisatmp3/chokyun/mt/ivocab_source.pkl"
     state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/ivocab_target.pkl"
     state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.en.pkl"
+    state['word_indx_trgt'] = "/data/lisatmp3/bahdanau/vocab.fr.pkl"
     state['oov'] = 'UNK'
     # TODO: delete this one
     state['randstart'] = False
@@ -940,7 +1089,7 @@ def prototype_state():
     state['bias_code'] = True
 
     # This is for the input -> output shortcut
-    state['avg_word'] = True
+    state['avg_word'] = False
 
     state['eps'] = 1e-10
 
@@ -1022,8 +1171,18 @@ def prototype_state():
     state['n_examples'] = 3
 
     # Starts a funny sampling regime
-    state['sample'] = True
-    state['seed'] = 1234
+    state['sample'] = False
+    state['sample_all_probs'] = False
+    state['check_first_word'] = True
+
+    # Starts scoring pairs regime
+    state['score'] = False
+    state['score_batch'] = True
+
+    # Start scoring all data regime
+    state['score_all'] = False
+    state['score_file'] = 'scores.txt'
+    state['flush_scores'] = 1000
 
     # Specifies whether old model should be reloaded first
     state['reload'] = True
