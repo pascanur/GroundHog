@@ -13,11 +13,14 @@ import os, gc
 
 import tables
 import copy
+import logging
 
 import threading
 import Queue
 
 import collections
+
+logger = logging.getLogger(__name__)
 
 class TMIterator(object):
 
@@ -194,11 +197,10 @@ class TMIteratorPytablesGatherProcessing(threading.Thread):
                 pass
         self.data_len = self.source_langs[-1][1].shape[0]
 
-        self.idxs = np.arange(self.data_len)
-        self.datasetIter.offset = np.random.randint(self.data_len)
-
         if self.datasetIter.shuffle:
-            np.random.shuffle(self.idxs)
+            self.datasetIter.offset = np.random.randint(self.data_len)
+        logger.debug("{} entries".format(self.data_len))
+        logger.debug("Starting from the entry {}".format(self.datasetIter.offset))
 
         counter = 0
         while not self.exitFlag:
@@ -213,7 +215,7 @@ class TMIteratorPytablesGatherProcessing(threading.Thread):
                     while not npos and inc_offset <= self.data_len:
                         sents = np.asarray([np.cast[self.datasetIter.dtype](si) for si in
                             [source_lang[0][source_lang[1][i]['pos']:(source_lang[1][i]['pos']+source_lang[1][i]['length'])]
-                                for i in self.idxs[self.datasetIter.offset:inc_offset]]])
+                                for i in range(self.datasetIter.offset, inc_offset)]])
                         npos = len(sents)
                         nzeros = self.datasetIter.batch_size - npos
                         inc_offset += nzeros
@@ -228,7 +230,7 @@ class TMIteratorPytablesGatherProcessing(threading.Thread):
                     while not npos and inc_offset <= self.data_len:
                         sents = np.asarray([np.cast[self.datasetIter.dtype](si) for si in
                             [target_lang[0][target_lang[1][i]['pos']:(target_lang[1][i]['pos']+target_lang[1][i]['length'])]
-                                for i in self.idxs[self.datasetIter.offset:inc_offset]] if
+                                for i in range(self.datasetIter.offset, inc_offset)] if
                             len(si)>0])
                         npos = len(sents)
                         nzeros = self.datasetIter.batch_size - npos
@@ -242,7 +244,7 @@ class TMIteratorPytablesGatherProcessing(threading.Thread):
                     print "Restarting the dataset iterator."
                     inc_offset = 0
                     if self.datasetIter.shuffle:
-                        np.random.shuffle(self.idxs)
+                        self.datasetIter.offset = np.random.randint(self.data_len)
                 elif inc_offset > self.data_len:
                     last_batch = True
 
