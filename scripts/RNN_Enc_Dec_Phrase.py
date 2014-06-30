@@ -714,7 +714,7 @@ class RNNEncoderDecoder(object):
             logger.debug("Compile scorer")
             self.score_fn = theano.function(
                     inputs=self.inputs,
-                    outputs=[self.predictions.word_probs])
+                    outputs=[self.predictions.cost_per_sample])
         if batch:
             return self.score_fn
         def scorer(x, y):
@@ -977,9 +977,8 @@ def do_experiment(state, channel):
                 if batch == None:
                     continue
                 st = time.time()
-                [probs] = scorer(batch['x'], batch['y'],
+                [scores] = scorer(batch['x'], batch['y'],
                         batch['x_mask'], batch['y_mask'])
-                scores = -numpy.log(probs).sum(axis=0)
                 up_time = time.time() - st
                 for s in scores:
                     print >>score_file, "{:.5f}".format(float(s))

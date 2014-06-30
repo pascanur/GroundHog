@@ -1069,6 +1069,7 @@ class SoftmaxLayer(CostLayer):
 
         if mask:
             cost = cost * TT.cast(mask.flatten(), theano.config.floatX)
+        self.cost_per_sample = cost.reshape(target_shape).sum(axis=0)
 
         if sum_over_time is None:
             sum_over_time = self.sum_over_time
