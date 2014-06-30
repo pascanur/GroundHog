@@ -1063,6 +1063,9 @@ class SoftmaxLayer(CostLayer):
         new_targ = target + pos
         cost = -TT.log(class_probs.flatten()[new_targ])
         self.word_probs = TT.exp(-cost.reshape(target_shape))
+        # Set all the probs after the end-of-line to one
+        if mask:
+            self.word_probs = self.word_probs * mask + 1 - mask
 
         if mask:
             cost = cost * TT.cast(mask.flatten(), theano.config.floatX)
