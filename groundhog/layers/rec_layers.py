@@ -1009,8 +1009,8 @@ class RecurrentLayer(Layer):
             self.noise_params_shape_fn = [constant_shape(x.get_value().shape)
                             for x in self.noise_params]
 
-    def step_fprop(self, 
-                   state_below, 
+    def step_fprop(self,
+                   state_below,
                    mask = None,
                    state_before = None,
                    gater_below = None,
@@ -1059,7 +1059,7 @@ class RecurrentLayer(Layer):
             if self.reseting:
                 R_hh = self.R_hh
         if self.reseting and reseter_below:
-            reseter = self.reseter_activation(TT.dot(state_before, R_hh) + 
+            reseter = self.reseter_activation(TT.dot(state_before, R_hh) +
                     reseter_below)
             state_before_ = reseter * state_before
         else:
@@ -1067,7 +1067,7 @@ class RecurrentLayer(Layer):
         preactiv = TT.dot(state_before_, W_hh) + state_below
         h = self.activation(preactiv)
         if self.gating and gater_below:
-            gater = self.gater_activation(TT.dot(state_before, G_hh) + 
+            gater = self.gater_activation(TT.dot(state_before, G_hh) +
                     gater_below)
             h = gater * h + (1-gater) * state_before
         if self.activ_noise and use_noise:
@@ -1104,6 +1104,8 @@ class RecurrentLayer(Layer):
         if state_below.ndim == 2 and \
            (not isinstance(batch_size,int) or batch_size > 1):
             state_below = state_below.reshape((nsteps, batch_size, self.n_in))
+            gater_below = gater_below.reshape((nsteps, batch_size, self.n_in))
+            reseter_below = reseter_below.reshape((nsteps, batch_size, self.n_in))
 
         if not init_state:
             if not isinstance(batch_size, int) or batch_size != 1:
@@ -1121,19 +1123,19 @@ class RecurrentLayer(Layer):
                 else:
                     inps = [state_below, gater_below, reseter_below]
                     fn = lambda tx, tg,tr, ty: self.step_fprop(tx, None, ty, gater_below=tg,
-                                                        reseter_below=tr, 
+                                                        reseter_below=tr,
                                                         use_noise=use_noise,
                                                         no_noise_bias=no_noise_bias)
             else:
                 if mask:
                     inps = [state_below, mask, reseter_below]
                     fn = lambda x,y,r,z : self.step_fprop(x,y,z, use_noise=use_noise,
-                                                        reseter_below=r, 
+                                                        reseter_below=r,
                                                        no_noise_bias=no_noise_bias)
                 else:
                     inps = [state_below, reseter_below]
                     fn = lambda tx,tr,ty: self.step_fprop(tx, None, ty,
-                                                        reseter_below=tr, 
+                                                        reseter_below=tr,
                                                         use_noise=use_noise,
                                                         no_noise_bias=no_noise_bias)
         else:
