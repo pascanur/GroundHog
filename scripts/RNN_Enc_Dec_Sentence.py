@@ -1093,21 +1093,20 @@ def prototype_state():
     state['seed'] = 1234
 
     # Data
-    #state['source'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.en.h5"]
-    #state['target'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.fr.h5"]
-    state['target'] = ["/u/chokyun/tmp3/mt/phrase_table.freq.fr.h5"]
-    state['source'] = ["/u/chokyun/tmp3/mt/phrase_table.freq.en.h5"]
-    state['indx_word'] = "/data/lisatmp3/chokyun/mt/ivocab_source.pkl"
-    state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/ivocab_target.pkl"
-    state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.en.pkl"
-    state['word_indx_trgt'] = "/data/lisatmp3/bahdanau/vocab.fr.pkl"
+    state['target'] = ["/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/binarized_text.fr.h5"]
+    state['source'] = ["/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/binarized_text.en.h5"]
+    state['indx_word'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/ivocab_source.pkl"
+    state['indx_word_target'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/ivocab_target.pkl"
+    state['word_indx'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/vocab.en.pkl"
+    state['word_indx_trgt'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/vocab.fr.pkl"
+
     state['oov'] = 'UNK'
     # TODO: delete this one
     state['randstart'] = False
 
     # These are end-of-sequence marks
-    state['null_sym_source'] = 15000
-    state['null_sym_target'] = 15000
+    state['null_sym_source'] = 30000
+    state['null_sym_target'] = 30000
 
     # These are vocabulary sizes for the source and target languages
     state['n_sym_source'] = state['null_sym_source'] + 1
@@ -1129,7 +1128,7 @@ def prototype_state():
     state['eps'] = 1e-10
 
     # Dimensionality of hidden layers
-    state['dim'] = 1000
+    state['dim'] = 2000
     state['dim_mlp'] = state['dim']
 
     # Size of hidden layers' stack in encoder and decoder
@@ -1139,7 +1138,7 @@ def prototype_state():
     state['deep_out'] = True
     state['mult_out'] = False
 
-    state['rank_n_approx'] = 100
+    state['rank_n_approx'] = 500
     state['rank_n_activ'] = 'lambda x: x'
 
     # Hidden layer configuration
@@ -1195,11 +1194,11 @@ def prototype_state():
     state['minlr'] = 0
 
     # Batch size
-    state['bs']  = 64
+    state['bs']  = 32
     # TODO: not used???
     state['vbs'] = 64
     # Maximum sequence length
-    state['seqlen'] = 30
+    state['seqlen'] = 50
 
     # Sampling hook settings
     state['n_samples'] = 3
@@ -1224,7 +1223,7 @@ def prototype_state():
     state['encode_file'] = '/u/chokyun/tmp3/mt/phrase_code.freq.txt'
 
     # Specifies whether old model should be reloaded first
-    state['reload'] = True
+    state['reload'] = False
 
     # Number of batches to process
     state['loopIters'] = 3000000
@@ -1245,7 +1244,7 @@ def prototype_state():
     # Validation frequency
     state['validFreq'] = 500
     # Model saving frequency (in minutes)
-    state['saveFreq'] = 1
+    state['saveFreq'] = 60
 
     # Turns on profiling of training phase
     state['profile'] = 0
@@ -1253,11 +1252,11 @@ def prototype_state():
     # Raise exception if nan
     state['on_nan'] = 'raise'
 
-    state['infinite_loop'] = False
+    state['infinite_loop'] = True
 
     # Default paths
-    state['prefix'] = 'model_phrase_'
-    state['model_path'] = 'model_phrase_model.npz'
+    state['prefix'] = '/data/lisatmp3/chokyun/sentence_'
+    state['model_path'] = '/data/lisatmp3/chokyun/sentence_model.npz'
 
     # When set to 0 each new model dump will be saved in a new file
     state['overwrite'] = 1
