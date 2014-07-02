@@ -23,6 +23,8 @@ def parse_args():
     parser.add_argument("--src", help="Source phrases")
     parser.add_argument("--trg", help="Target phrases")
     parser.add_argument("--scores", default="scores.txt", help="Save scores to")
+    parser.add_argument("--print-probs", action="store_true", default=False,
+        help="Print probabilities instead of log-likelihoods")
     parser.add_argument("model_path", help="Path to the model")
     parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
     return parser.parse_args()
@@ -50,7 +52,7 @@ def main():
         state['shuffle'] = False
 
         data_iter = get_batch_iterator(state, rng)
-        score_file = open(state["score_file"], "w")
+        score_file = open(args.scores, "w")
 
         scorer = enc_dec.create_scorer(batch=True)
 
@@ -63,9 +65,11 @@ def main():
             st = time.time()
             [scores] = scorer(batch['x'], batch['y'],
                     batch['x_mask'], batch['y_mask'])
+            if args.print_probs:
+                scores = numpy.exp(scores)
             up_time = time.time() - st
             for s in scores:
-                print >>score_file, "{:.5f}".format(float(s))
+                print >>score_file, "{:.5e}".format(float(s))
 
             n_samples += batch['x'].shape[1]
             count += 1
