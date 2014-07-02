@@ -819,7 +819,7 @@ class RNNEncoderDecoder(object):
             logger.debug("Compile scorer")
             self.score_fn = theano.function(
                     inputs=self.inputs,
-                    outputs=[self.predictions.cost_per_sample])
+                    outputs=[-self.predictions.cost_per_sample])
         if batch:
             return self.score_fn
         def scorer(x, y):

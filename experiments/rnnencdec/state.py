@@ -118,19 +118,8 @@ def prototype_state():
     state['n_samples'] = 3
     state['n_examples'] = 3
 
-    # Starts a funny sampling regime
-    state['sample'] = False
-    state['sample_all_probs'] = False
+    # Activates bug fix
     state['check_first_word'] = True
-
-    # Starts scoring pairs regime
-    state['score'] = False
-    state['score_batch'] = False
-
-    # Start scoring all data regime
-    state['score_all'] = False
-    state['score_file'] = 'scores.txt'
-    state['flush_scores'] = 1000
 
     # Specifies whether old model should be reloaded first
     state['reload'] = True
@@ -164,7 +153,6 @@ def prototype_state():
 
     # Default paths
     state['prefix'] = 'model_phrase_'
-    state['model_path'] = 'model_phrase_model.npz'
 
     # When set to 0 each new model dump will be saved in a new file
     state['overwrite'] = 1
