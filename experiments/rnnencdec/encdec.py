@@ -819,7 +819,7 @@ class RNNEncoderDecoder(object):
             logger.debug("Compile scorer")
             self.score_fn = theano.function(
                     inputs=self.inputs,
-                    outputs=[self.predictions.word_probs])
+                    outputs=[self.predictions.cost_per_sample])
         if batch:
             return self.score_fn
         def scorer(x, y):
@@ -828,6 +828,19 @@ class RNNEncoderDecoder(object):
             return self.score_fn(x[:, None], y[:, None],
                     x_mask[:, None], y_mask[:, None])
         return scorer
+
+    def create_probs_computer(self):
+        if not hasattr(self, 'probs_fn'):
+            logger.debug("Compile probs computer")
+            self.probs_fn = theano.function(
+                    inputs=self.inputs,
+                    outputs=[self.predictions.word_probs])
+        def probs_computer(x, y):
+            x_mask = numpy.ones(x.shape[0], dtype="float32")
+            y_mask = numpy.ones(y.shape[0], dtype="float32")
+            return self.probs_fn(x[:, None], y[:, None],
+                    x_mask[:, None], y_mask[:, None])
+        return probs_computer
 
 def parse_input(state, word2idx, line, raise_unk=False):
     seqin = line.split()
