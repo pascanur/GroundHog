@@ -158,3 +158,31 @@ def prototype_state():
     state['overwrite'] = 1
 
     return state
+
+def state_sentence():
+    state = prototype_state()
+
+    state['target'] = ["/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.fr.h5"]
+    state['source'] = ["/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.en.h5"]
+    state['indx_word'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/ivocab_source.pkl"
+    state['indx_word_target'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/ivocab_target.pkl"
+    state['word_indx'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/vocab.en.pkl"
+    state['word_indx_trgt'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/vocab.fr.pkl"
+
+    state['null_sym_source'] = 30000
+    state['null_sym_target'] = 30000
+
+    state['n_sym_source'] = state['null_sym_source'] + 1
+    state['n_sym_target'] = state['null_sym_target'] + 1
+
+    state['nouts'] = state['n_sym_target']
+    state['nins'] = state['n_sym_source']
+
+    state['dim'] = 2000
+    state['dim_mlp'] = state['dim']
+    state['rank_n_approx'] = 500
+
+    state['prefix'] = '/data/lisatmp3/chokyun/sentence_'
+    state['model_path'] = '/data/lisatmp3/chokyun/sentence_model.npz'
+
+    return state

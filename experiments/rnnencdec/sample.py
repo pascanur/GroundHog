@@ -7,13 +7,15 @@ import logging
 
 import numpy
 
-from experiments.rnnencdec import RNNEncoderDecoder, prototype_state, parse_input
+import experiments.rnnencdec
+from experiments.rnnencdec import RNNEncoderDecoder, parse_input
 
 logger = logging.getLogger(__name__)
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", help="State to use")
+    parser.add_argument("--state-fn", help="Initialization function for state", default="prototype_state")
     parser.add_argument("model_path", help="Path to the model")
     parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
     return parser.parse_args()
@@ -21,8 +23,8 @@ def parse_args():
 def main():
     args = parse_args()
 
-    state = prototype_state()
-    if hasattr(args, 'state'):
+    state = getattr(experiments.rnnencdec, args.state_fn)()
+    if hasattr(args, 'state') and args.state:
         with open(args.state) as src:
             state.update(cPickle.load(src))
     state.update(eval("dict({})".format(args.changes)))
