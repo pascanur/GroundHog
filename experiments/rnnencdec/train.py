@@ -49,13 +49,14 @@ class RandomSamplePrinter(object):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", help="State to use")
+    parser.add_argument("--state-fn", help="Initialization function for state", default="prototype_state")
     parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
     return parser.parse_args()
 
 def main():
     args = parse_args()
 
-    state = prototype_state()
+    state = getattr(experiments.rnnencdec, args.state_fn)()
     if args.state:
         with open(args.state) as src:
             state.update(cPickle.load(src))
