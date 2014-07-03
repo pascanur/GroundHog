@@ -21,7 +21,9 @@ if __name__ == "__main__":
 
     tm = numpy.load(args.timing_path)
     num_steps = min(tm['step'], args.finish)
-    df = pandas.DataFrame(dict(cost=tm['cost'][args.start:num_steps]))
-    pandas.rolling_mean(df, args.window).plot()
+    df = pandas.DataFrame({k : tm[k] for k in ['traincost', 'time_step']})[args.start:num_steps]
+    one_step = df['time_step'].median() / 3600.0
+    df.index = (args.start + numpy.arange(0, df.index.shape[0])) * one_step
+    pandas.rolling_mean(df['traincost'], args.window).plot()
 
     pyplot.savefig(args.plot_path)
