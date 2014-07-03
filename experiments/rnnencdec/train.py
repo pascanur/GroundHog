@@ -11,6 +11,7 @@ from groundhog.trainer.SGD_adadelta import SGD as SGD_adadelta
 from groundhog.mainLoop import MainLoop
 from experiments.rnnencdec import\
         RNNEncoderDecoder, prototype_state, get_batch_iterator
+import experiments.rnnencdec
 
 logger = logging.getLogger(__name__)
 

@@ -178,6 +178,8 @@ def state_sentence():
     state['nouts'] = state['n_sym_target']
     state['nins'] = state['n_sym_source']
 
+    state['seqlen'] = 50
+
     state['dim'] = 2000
     state['dim_mlp'] = state['dim']
     state['rank_n_approx'] = 500
