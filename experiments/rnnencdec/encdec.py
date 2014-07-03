@@ -1,6 +1,7 @@
 import numpy
 import logging
 import pprint
+import functools
 
 import theano
 import theano.tensor as TT
@@ -152,11 +153,12 @@ class ReplicateLayer(Layer):
         self.n_times = n_times
         super(ReplicateLayer, self).__init__(0, 0, None)
 
-    def fprop(self, matrix):
+    def fprop(self, x):
         # This is black magic based on broadcasting,
         # that's why variable names don't make any sense.
-        a = TT.shape_padleft(matrix)
-        b = TT.alloc(numpy.float32(1), self.n_times, 1, 1)
+        a = TT.shape_padleft(x)
+        padding = [1] * x.ndim
+        b = TT.alloc(numpy.float32(1), self.n_times, *padding)
         self.out = a * b
         return self.out
 
@@ -540,10 +542,10 @@ class Decoder(EncoderDecoderBase):
 
         :param y:
         if not for_sampling:
-            target sequences, matrix of word indices,
+            target sequences, matrix of word indices of shape (max_seq_len, batch_size),
             where each column is a sequence
         if for_sampling:
-            a scalar corresponding to the previous word
+            a vector of previous words of shape (n_samples,)
 
         :param y_mask: if not for_sampling a 0/1 matrix determining lengths
             of the target sequences, must be None if for_sampling
@@ -551,34 +553,33 @@ class Decoder(EncoderDecoderBase):
         :param for_sampling: if True then builds the next word predictor,
             otherwise builds a log-likelihood evaluator
 
-        :param given_init_states: if not None specifies
-            the initial states of hidden layers
+        :param given_init_states: only for sampling. A list of hidden states
+            matrices for each layer, each matrix is (n_samples, dim)
 
         :param T: sampling temperature
         """
 
         # Check parameter consistency
         if for_sampling:
-            assert y_mask == None
+            assert not y_mask
             y = dbg_sum("Y:", y)
+        else:
+            assert not given_init_states
 
         # For log-likelihood evaluation the representation
         # be replicated for conveniency.
         # Shape if not for_sampling:
         #   (max_seq_len, batch_size, dim)
         # Shape if for_sampling:
-        #   (dim,)
+        #   (n_samples, dim)
         c = dbg_hook(lambda _, x : logger.debug("Representation: {}".format(x.sum())), c)
-        if for_sampling:
-            replicated_c = c
-        else:
-            replicated_c = ReplicateLayer(y.shape[0])(c)
+        replicated_c = ReplicateLayer(y.shape[0])(c)
 
         # Low rank embeddings of all the input words.
         # Shape if not for_sampling:
         #   (n_words, rank_n_approx),
         # Shape if for_sampling:
-        #   (rank_n_approx, )
+        #   (n_samples, rank_n_approx)
         approx_embeddings = dbg_sum("Approximate y embeddings:", self.approx_embedder(y))
 
         # Low rank embeddings are projected to contribute
@@ -586,7 +587,7 @@ class Decoder(EncoderDecoderBase):
         # All the shapes if not for_sampling:
         #   (n_words, dim)
         # All the shape if for_sampling:
-        #   (dim,)
+        #   (n_samples, dim)
         input_signals = []
         reset_signals = []
         update_signals = []
@@ -609,7 +610,7 @@ class Decoder(EncoderDecoderBase):
         # Shapes if not for_sampling:
         #   (batch_size, dim)
         # Shape if for_sampling:
-        #   (,dim)
+        #   (n_samples, dim)
         init_states = given_init_states
         if not init_states:
             init_states = []
@@ -620,7 +621,7 @@ class Decoder(EncoderDecoderBase):
         # Shapes if not for_sampling:
         #  (seq_len, batch_size, dim)
         # Shapes if for_sampling:
-        #  (,dim)
+        #  (n_samples, dim)
         hidden_layers = []
         for level in range(self.num_levels):
             if level > 0:
@@ -662,7 +663,7 @@ class Decoder(EncoderDecoderBase):
         # Shape if for_sampling:
         #   (n_words, dim_r)
         # Shape if not for_sampling:
-        #   (,dim_r)
+        #   (n_samples, dim_r)
         # ... where dim_r depends on 'deep_out' option.
         readout = self.repr_readout(replicated_c)
         for level in range(self.num_levels):
@@ -673,8 +674,11 @@ class Decoder(EncoderDecoderBase):
             readout += self.hidden_readouts[level](read_from)
         if self.state['bigram']:
             if for_sampling:
-                check_first_word = y > 0 if self.state['check_first_word'] else TT.constant(1.)
-                readout += check_first_word * self.prev_word_readout(approx_embeddings).out
+                check_first_word = (y > 0
+                    if self.state['check_first_word']
+                    else TT.ones((y.shape[0]), dtype="float32"))
+                # padright is necessary as we want to multiply each row with a certain scalar
+                readout += TT.shape_padright(check_first_word) * self.prev_word_readout(approx_embeddings).out
             else:
                 if y.ndim == 1:
                     readout += Shift()(self.prev_word_readout(approx_embeddings).reshape(
@@ -698,17 +702,17 @@ class Decoder(EncoderDecoderBase):
             logger.debug("Readouts: {}".format(values))
         readout = dbg_hook(readout_hook, readout)
 
-
         if for_sampling:
             sample = self.output_layer.get_sample(
                     state_below=readout,
                     temp=T)
             # Current SoftmaxLayer.get_cost is stupid,
             # that's why we have to reshape a lot.
-            log_prob = self.output_layer.get_cost(
-                    state_below=TT.shape_padleft(readout),
+            self.output_layer.get_cost(
+                    state_below=readout.out,
                     temp=T,
-                    target=sample.reshape((1,)))
+                    target=sample)
+            log_prob = self.output_layer.cost_per_sample
             return [sample] + [log_prob] + hidden_layers
         else:
             return self.output_layer.train(
@@ -725,11 +729,11 @@ class Decoder(EncoderDecoderBase):
         args = iter(args)
 
         prev_word = next(args)
-        assert prev_word.ndim == 0
+        assert prev_word.ndim == 1
         # skip the previous word log probability
-        assert next(args).ndim == 0
+        assert next(args).ndim == 1
         prev_hidden_states = [dbg_sum("PrevHidden:", next(args)) for k in range(self.num_levels)]
-        assert prev_hidden_states[0].ndim == 1
+        assert prev_hidden_states[0].ndim == 2
         c = next(args)
         assert c.ndim == 1
         T = next(args)
@@ -741,9 +745,10 @@ class Decoder(EncoderDecoderBase):
                 given_init_states=prev_hidden_states, T=T)
         return sample, log_prob, hidden_states
 
-    def build_sampler(self, n_steps, T, c):
-        states = [TT.constant(0, dtype='int64'), TT.constant(0.0, dtype='float32')]\
-                + [init(c).out for init in self.initializers]
+    def build_sampler(self, n_samples, n_steps, T, c):
+        states = [TT.zeros(shape=(n_samples,), dtype='int64'),
+                TT.zeros(shape=(n_samples,), dtype='float32')]\
+                + [ReplicateLayer(n_samples)(init(c).out).out for init in self.initializers]
         dbg_sum("Init:", states[2])
         params = [c, T]
         outputs, updates = theano.scan(self.sampling_step,
@@ -781,12 +786,13 @@ class RNNEncoderDecoder(object):
 
         logger.debug("Build sampling computation graph")
         self.sampling_x = TT.lvector("sampling_x")
+        self.n_samples = TT.lscalar("n_samples")
         self.n_steps = TT.lscalar("n_steps")
         self.T = TT.scalar("T")
         sampling_c = self.encoder.build_encoder(
                 self.sampling_x, x_mask=False, use_noise=False).out
         (self.sample, self.sample_log_prob), self.sampling_updates =\
-            decoder.build_sampler(self.n_steps, self.T, sampling_c)
+            decoder.build_sampler(self.n_samples, self.n_steps, self.T, sampling_c)
 
     def create_lm_model(self):
         if hasattr(self, 'lm_model'):
@@ -803,15 +809,19 @@ class RNNEncoderDecoder(object):
             pprint.pformat([p.name for p in self.lm_model.params])))
         return self.lm_model
 
-    def create_sampler(self):
+    def create_sampler(self, many_samples=False):
         if hasattr(self, 'sample_fn'):
             return self.sample_fn
         logger.debug("Compile sampler")
         self.sample_fn = theano.function(
-                inputs=[self.n_steps, self.T, self.sampling_x],
+                inputs=[self.n_samples, self.n_steps, self.T, self.sampling_x],
                 outputs=[self.sample, self.sample_log_prob],
                 updates=self.sampling_updates,
                 name="sample_fn")
+        if not many_samples:
+            def sampler(*args):
+                return map(lambda x : x.squeeze(), self.sample_fn(1, *args))
+            return sampler
         return self.sample_fn
 
     def create_scorer(self, batch=False):

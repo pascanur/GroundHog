@@ -34,6 +34,7 @@ def main():
     rng = numpy.random.RandomState(state['seed'])
     enc_dec = RNNEncoderDecoder(state, rng)
     enc_dec.build()
+    sampler = enc_dec.create_sampler(many_samples=True)
     lm_model = enc_dec.create_lm_model()
     lm_model.load(args.model_path)
     indx_word = cPickle.load(open(state['word_indx'],'rb'))
@@ -51,17 +52,18 @@ def main():
         sentences = []
         all_probs = []
         sum_log_probs = []
+
+        values, cond_probs = sampler(n_samples, 3 * (len(seq) - 1), alpha, seq)
         for sidx in xrange(n_samples):
-            logger.debug("Sample {}".format(sidx))
-            [values, probs] = lm_model.sample_fn(3 * len(seq) - 3, alpha, seq)
             sen = []
             for k in xrange(values.shape[0]):
-                if lm_model.word_indxs[values[k]] == '<eol>':
+                if lm_model.word_indxs[values[k, sidx]] == '<eol>':
                     break
-                sen.append(lm_model.word_indxs[values[k]])
+                sen.append(lm_model.word_indxs[values[k, sidx]])
             sentences.append(" ".join(sen))
+            probs = cond_probs[:, sidx]
             if not state['sample_all_probs']:
-                probs = numpy.array(probs[:len(sen) + 1])
+                probs = numpy.array(cond_probs[:len(sen) + 1, sidx])
             all_probs.append(numpy.exp(-probs))
             sum_log_probs.append(-numpy.sum(probs))
         sprobs = numpy.argsort(sum_log_probs)
