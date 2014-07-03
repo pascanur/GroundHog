@@ -62,8 +62,7 @@ def main():
                 sen.append(lm_model.word_indxs[values[k, sidx]])
             sentences.append(" ".join(sen))
             probs = cond_probs[:, sidx]
-            if not state['sample_all_probs']:
-                probs = numpy.array(cond_probs[:len(sen) + 1, sidx])
+            probs = numpy.array(cond_probs[:len(sen) + 1, sidx])
             all_probs.append(numpy.exp(-probs))
             sum_log_probs.append(-numpy.sum(probs))
         sprobs = numpy.argsort(sum_log_probs)
