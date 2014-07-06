@@ -24,7 +24,9 @@ class BeamSearch(object):
         self.comp_next_probs = self.enc_dec.create_next_probs_computer()
         self.comp_next_states = self.enc_dec.create_next_states_computer()
 
-    def search(self, seq, n_samples, ignore_unk=False, unk_id=1):
+    def search(self, seq, n_samples,
+               ignore_unk=False, unk_id=1,
+               minlen=1, eos_id=-1):
         c = self.comp_repr(seq)[0]
         states = map(lambda x : x[None, :], self.comp_init_states(c))
 
@@ -46,6 +48,8 @@ class BeamSearch(object):
             probs = self.comp_next_probs(c, last_words, *states)[0]
             if ignore_unk:
                 probs[:,unk_id] = -numpy.inf
+            if k < minlen:
+                probs[:,eos_id] = -numpy.inf
 
             n_choices = beam_size * n_samples
             choices = numpy.zeros((n_choices, 2), dtype="int64")
@@ -150,7 +154,9 @@ def main():
             continue
 
         if args.beam_search:
-            trans, costs = beam_search.search(seq, n_samples, ignore_unk=True, unk_id=1)
+            trans, costs = beam_search.search(seq, n_samples,
+                                              ignore_unk=True, unk_id=1,
+                                              minlen=len(seq)/2, eos_id=-1)
             for i in numpy.argsort(costs):
                 sen = indices_to_words(lm_model.word_indxs, trans[i])
                 print "{}: {}".format(costs[i], " ".join(sen))
