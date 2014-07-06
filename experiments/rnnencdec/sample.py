@@ -110,9 +110,47 @@ def parse_args():
     parser.add_argument("--state-fn", help="Initialization function for state", default="prototype_state")
     parser.add_argument("--beam-search", help="Do beam search instead of sampling",
             action="store_true", default=False)
+    parser.add_argument("--source", help="File of source sentences", default="")
+    parser.add_argument("--trans", help="File to save translations in", default="")
     parser.add_argument("model_path", help="Path to the model")
     parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
     return parser.parse_args()
+
+def sample(lm_model, seq, n_samples, beam_search=None, verbose=False):
+    if beam_search:
+        sentences = []
+        trans, costs = beam_search.search(seq, n_samples,
+                                          ignore_unk=True, unk_id=1,
+                                          minlen=len(seq)/2, eos_id=-1)
+        for i in numpy.argsort(costs):
+            sen = indices_to_words(lm_model.word_indxs, trans[i])
+            sentences.append(" ".join(sen))
+            if verbose:
+                print "{}: {}".format(costs[i], sentences[-1])
+    else:
+        sentences = []
+        all_probs = []
+        costs = []
+
+        values, cond_probs = sampler(n_samples, 3 * (len(seq) - 1), alpha, seq)
+        for sidx in xrange(n_samples):
+            sen = []
+            for k in xrange(values.shape[0]):
+                if lm_model.word_indxs[values[k, sidx]] == '<eol>':
+                    break
+                sen.append(lm_model.word_indxs[values[k, sidx]])
+            sentences.append(" ".join(sen))
+            probs = cond_probs[:, sidx]
+            probs = numpy.array(cond_probs[:len(sen) + 1, sidx])
+            all_probs.append(numpy.exp(-probs))
+            costs.append(-numpy.sum(probs))
+        sprobs = numpy.argsort(costs)
+        if verbose:
+            for pidx in sprobs:
+                print "{}: {} {} {}".format(pidx, -costs[pidx], all_probs[pidx], sentences[pidx])
+            print
+
+    return sentences, costs
 
 def main():
     args = parse_args()
@@ -137,50 +175,40 @@ def main():
         beam_search.compile()
     else:
         sampler = enc_dec.create_sampler(many_samples=True)
+        beam_search = None
 
     idict_src = cPickle.load(open(state['indx_word'],'r'))
 
-    while True:
-        try:
-            seqin = raw_input('Input Sequence: ')
-            n_samples = int(raw_input('How many samples? '))
-            if not args.beam_search:
-                alpha = float(raw_input('Inverse Temperature? '))
+    if args.source != "" and args.trans != "":
+        fsrc = open(args.source, 'r')
+        ftrans = open(args.trans, 'w')
+
+        n_samples = int(raw_input('How many samples per sentence? '))
+        for line in fsrc:
+            seqin = line.strip()
             seq,parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
             print "Parsed Input:", parsed_in
-        except Exception:
-            print "Exception while parsing your input:"
-            traceback.print_exc()
-            continue
+            trans, costs = sample(lm_model, seq, n_samples, beam_search=beam_search)
+            print >>ftrans, trans[numpy.argmin(costs)]
+            print "Translation:", trans[numpy.argmin(costs)]
 
-        if args.beam_search:
-            trans, costs = beam_search.search(seq, n_samples,
-                                              ignore_unk=True, unk_id=1,
-                                              minlen=len(seq)/2, eos_id=-1)
-            for i in numpy.argsort(costs):
-                sen = indices_to_words(lm_model.word_indxs, trans[i])
-                print "{}: {}".format(costs[i], " ".join(sen))
-        else:
-            sentences = []
-            all_probs = []
-            sum_log_probs = []
+        fsrc.close()
+        ftrans.close()
+    else:
+        while True:
+            try:
+                seqin = raw_input('Input Sequence: ')
+                n_samples = int(raw_input('How many samples? '))
+                if not args.beam_search:
+                    alpha = float(raw_input('Inverse Temperature? '))
+                seq,parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
+                print "Parsed Input:", parsed_in
+            except Exception:
+                print "Exception while parsing your input:"
+                traceback.print_exc()
+                continue
 
-            values, cond_probs = sampler(n_samples, 3 * (len(seq) - 1), alpha, seq)
-            for sidx in xrange(n_samples):
-                sen = []
-                for k in xrange(values.shape[0]):
-                    if lm_model.word_indxs[values[k, sidx]] == '<eol>':
-                        break
-                    sen.append(lm_model.word_indxs[values[k, sidx]])
-                sentences.append(" ".join(sen))
-                probs = cond_probs[:, sidx]
-                probs = numpy.array(cond_probs[:len(sen) + 1, sidx])
-                all_probs.append(numpy.exp(-probs))
-                sum_log_probs.append(-numpy.sum(probs))
-            sprobs = numpy.argsort(sum_log_probs)
-            for pidx in sprobs:
-                print "{}: {} {} {}".format(pidx, -sum_log_probs[pidx], all_probs[pidx], sentences[pidx])
-            print
+            trans, costs = sample(lm_model, seq, n_samples, beam_search=beam_search, verbose=True)
 
 if __name__ == "__main__":
     main()
