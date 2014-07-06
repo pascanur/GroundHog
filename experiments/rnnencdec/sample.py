@@ -112,16 +112,20 @@ def parse_args():
             action="store_true", default=False)
     parser.add_argument("--source", help="File of source sentences", default="")
     parser.add_argument("--trans", help="File to save translations in", default="")
+    parser.add_argument("--normalize", help="Normalize log-prob with the word count", action="store_true", default=False)
     parser.add_argument("model_path", help="Path to the model")
     parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
     return parser.parse_args()
 
-def sample(lm_model, seq, n_samples, beam_search=None, verbose=False):
+def sample(lm_model, seq, n_samples, beam_search=None, normalize=False, verbose=False):
     if beam_search:
         sentences = []
         trans, costs = beam_search.search(seq, n_samples,
                                           ignore_unk=True, unk_id=1,
                                           minlen=len(seq)/2, eos_id=-1)
+        if normalize:
+            counts = [len(s) for s in trans]
+            costs = [co / cn for co, cn in zip(costs, counts)]
         for i in numpy.argsort(costs):
             sen = indices_to_words(lm_model.word_indxs, trans[i])
             sentences.append(" ".join(sen))
@@ -144,6 +148,9 @@ def sample(lm_model, seq, n_samples, beam_search=None, verbose=False):
             probs = numpy.array(cond_probs[:len(sen) + 1, sidx])
             all_probs.append(numpy.exp(-probs))
             costs.append(-numpy.sum(probs))
+        if normalize:
+            counts = [len(s.strip().split(" ")) for s in sentences]
+            costs = [co / cn for co, cn in zip(costs, counts)]
         sprobs = numpy.argsort(costs)
         if verbose:
             for pidx in sprobs:
@@ -188,7 +195,7 @@ def main():
             seqin = line.strip()
             seq,parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
             print "Parsed Input:", parsed_in
-            trans, costs = sample(lm_model, seq, n_samples, beam_search=beam_search)
+            trans, costs = sample(lm_model, seq, n_samples, beam_search=beam_search, normalize=args.normalize)
             print >>ftrans, trans[numpy.argmin(costs)]
             print "Translation:", trans[numpy.argmin(costs)]
 
@@ -208,7 +215,7 @@ def main():
                 traceback.print_exc()
                 continue
 
-            trans, costs = sample(lm_model, seq, n_samples, beam_search=beam_search, verbose=True)
+            trans, costs = sample(lm_model, seq, n_samples, beam_search=beam_search, normalize=args.normalize, verbose=True)
 
 if __name__ == "__main__":
     main()
