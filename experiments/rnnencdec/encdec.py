@@ -908,7 +908,7 @@ class RNNEncoderDecoder(object):
                     x_mask[:, None], y_mask[:, None])
         return probs_computer
 
-def parse_input(state, word2idx, line, raise_unk=False):
+def parse_input(state, word2idx, line, raise_unk=False, idx2word=None):
     seqin = line.split()
     seqlen = len(seqin)
     seq = numpy.zeros(seqlen+1, dtype='int64')
@@ -920,4 +920,9 @@ def parse_input(state, word2idx, line, raise_unk=False):
                 raise
             seq[idx] = word2idx[state['oov']]
     seq[-1] = state['null_sym_source']
+    if idx2word:
+        idx2word[state['null_sym_source']] = '<eos>'
+        parsed_in = [idx2word[sx] for sx in seq]
+        return seq, " ".join(parsed_in)
+
     return seq

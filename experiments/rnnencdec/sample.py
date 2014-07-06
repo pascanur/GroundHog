@@ -132,13 +132,16 @@ def main():
     else:
         sampler = enc_dec.create_sampler(many_samples=True)
 
+    idict_src = cPickle.load(open(state['indx_word'],'r'))
+
     while True:
         try:
             seqin = raw_input('Input Sequence: ')
             n_samples = int(raw_input('How many samples? '))
             if not args.beam_search:
                 alpha = float(raw_input('Inverse Temperature? '))
-            seq = parse_input(state, indx_word, seqin)
+            seq,parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
+            print "Parsed Input:", parsed_in
         except Exception:
             print "Exception while parsing your input:"
             traceback.print_exc()
