@@ -110,8 +110,6 @@ def prototype_state():
 
     # Batch size
     state['bs']  = 64
-    # TODO: not used???
-    state['vbs'] = 64
     # Maximum sequence length
     state['seqlen'] = 30
 
