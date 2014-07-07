@@ -282,6 +282,7 @@ class EncoderDecoderBase(object):
                     gater_activation=self.state['rec_gater'],
                     reseting=self.state['rec_reseting'],
                     reseter_activation=self.state['rec_reseter'],
+                    profile=self.state['profile'],
                     name='{}_transition_{}'.format(prefix, level)))
 
 class Encoder(EncoderDecoderBase):
