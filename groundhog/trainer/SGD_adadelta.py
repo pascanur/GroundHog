@@ -189,7 +189,6 @@ class SGD(object):
         else:
             for gdata, data in zip(self.gdata, batch):
                 gdata.set_value(data, borrow=True)
-        print "Mask sum: {}".format(batch['y_mask'].sum())
         # Run the trianing function
         g_st = time.time()
         rvals = self.train_fn()
