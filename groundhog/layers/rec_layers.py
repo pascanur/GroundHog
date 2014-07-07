@@ -1104,8 +1104,10 @@ class RecurrentLayer(Layer):
         if state_below.ndim == 2 and \
            (not isinstance(batch_size,int) or batch_size > 1):
             state_below = state_below.reshape((nsteps, batch_size, self.n_in))
-            gater_below = gater_below.reshape((nsteps, batch_size, self.n_in))
-            reseter_below = reseter_below.reshape((nsteps, batch_size, self.n_in))
+            if gater_below:
+                gater_below = gater_below.reshape((nsteps, batch_size, self.n_in))
+            if reseter_below:
+                reseter_below = reseter_below.reshape((nsteps, batch_size, self.n_in))
 
         if not init_state:
             if not isinstance(batch_size, int) or batch_size != 1:
