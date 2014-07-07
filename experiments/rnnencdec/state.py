@@ -184,7 +184,6 @@ def state_sentence():
     state['rank_n_approx'] = 620
     state['bs']  = 256
 
-    state['prefix'] = '/data/lisatmp3/chokyun/sentence_'
-    state['model_path'] = '/data/lisatmp3/chokyun/sentence_model.npz'
+    state['prefix'] = 'sentence_'
 
     return state
