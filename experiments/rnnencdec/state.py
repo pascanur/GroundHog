@@ -25,6 +25,7 @@ def prototype_state():
     # These are vocabulary sizes for the source and target languages
     state['n_sym_source'] = state['null_sym_source'] + 1
     state['n_sym_target'] = state['null_sym_target'] + 1
+    state['unk_sym_target'] = 1
 
     # These are the number of input and output units
     state['nouts'] = state['n_sym_target']
