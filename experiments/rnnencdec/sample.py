@@ -4,7 +4,6 @@ import argparse
 import cPickle
 import traceback
 import logging
-from pprint import pprint
 
 import numpy
 
@@ -17,6 +16,9 @@ class BeamSearch(object):
 
     def __init__(self, enc_dec):
         self.enc_dec = enc_dec
+        state = self.enc_dec.state
+        self.eos_id = state['null_sym_target']
+        self.unk_id = state['unk_sym_target']
 
     def compile(self):
         self.comp_repr = self.enc_dec.create_representation_computer()
@@ -24,9 +26,7 @@ class BeamSearch(object):
         self.comp_next_probs = self.enc_dec.create_next_probs_computer()
         self.comp_next_states = self.enc_dec.create_next_states_computer()
 
-    def search(self, seq, n_samples,
-               ignore_unk=False, unk_id=1,
-               minlen=1, eos_id=-1):
+    def search(self, seq, n_samples, ignore_unk=False, minlen=1):
         c = self.comp_repr(seq)[0]
         states = map(lambda x : x[None, :], self.comp_init_states(c))
 
@@ -47,9 +47,9 @@ class BeamSearch(object):
                     else numpy.zeros(beam_size, dtype="int64"))
             probs = self.comp_next_probs(c, last_words, *states)[0]
             if ignore_unk:
-                probs[:,unk_id] = -numpy.inf
+                probs[:,self.unk_id] = -numpy.inf
             if k < minlen:
-                probs[:,eos_id] = -numpy.inf
+                probs[:,self.eos_id] = -numpy.inf
 
             n_choices = beam_size * n_samples
             choices = numpy.zeros((n_choices, 2), dtype="int64")
@@ -104,25 +104,13 @@ def indices_to_words(i2w, seq):
         sen.append(i2w[seq[k]])
     return sen
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--state", help="State to use")
-    parser.add_argument("--state-fn", help="Initialization function for state", default="prototype_state")
-    parser.add_argument("--beam-search", help="Do beam search instead of sampling",
-            action="store_true", default=False)
-    parser.add_argument("--source", help="File of source sentences", default="")
-    parser.add_argument("--trans", help="File to save translations in", default="")
-    parser.add_argument("--normalize", help="Normalize log-prob with the word count", action="store_true", default=False)
-    parser.add_argument("model_path", help="Path to the model")
-    parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
-    return parser.parse_args()
-
-def sample(lm_model, seq, n_samples, beam_search=None, normalize=False, verbose=False):
+def sample(lm_model, seq, n_samples,
+        sampler=None, beam_search=None,
+        normalize=False, alpha=1, verbose=False):
     if beam_search:
         sentences = []
         trans, costs = beam_search.search(seq, n_samples,
-                                          ignore_unk=True, unk_id=1,
-                                          minlen=len(seq)/2, eos_id=-1)
+                ignore_unk=True, minlen=len(seq) / 2)
         if normalize:
             counts = [len(s) for s in trans]
             costs = [co / cn for co, cn in zip(costs, counts)]
@@ -131,7 +119,7 @@ def sample(lm_model, seq, n_samples, beam_search=None, normalize=False, verbose=
             sentences.append(" ".join(sen))
             if verbose:
                 print "{}: {}".format(costs[i], sentences[-1])
-    else:
+    elif sampler:
         sentences = []
         all_probs = []
         costs = []
@@ -156,8 +144,23 @@ def sample(lm_model, seq, n_samples, beam_search=None, normalize=False, verbose=
             for pidx in sprobs:
                 print "{}: {} {} {}".format(pidx, -costs[pidx], all_probs[pidx], sentences[pidx])
             print
+    else:
+        raise Exception("I don't know what to do")
 
     return sentences, costs
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--state", help="State to use")
+    parser.add_argument("--state-fn", help="Initialization function for state", default="prototype_state")
+    parser.add_argument("--beam-search", help="Do beam search instead of sampling",
+            action="store_true", default=False)
+    parser.add_argument("--source", help="File of source sentences", default="")
+    parser.add_argument("--trans", help="File to save translations in", default="")
+    parser.add_argument("--normalize", help="Normalize log-prob with the word count", action="store_true", default=False)
+    parser.add_argument("model_path", help="Path to the model")
+    parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
+    return parser.parse_args()
 
 def main():
     args = parse_args()
@@ -177,16 +180,20 @@ def main():
     lm_model.load(args.model_path)
     indx_word = cPickle.load(open(state['word_indx'],'rb'))
 
+    sampler = None
+    beam_search = None
     if args.beam_search:
         beam_search = BeamSearch(enc_dec)
         beam_search.compile()
     else:
         sampler = enc_dec.create_sampler(many_samples=True)
-        beam_search = None
 
     idict_src = cPickle.load(open(state['indx_word'],'r'))
 
     if args.source != "" and args.trans != "":
+        # Actually only beam search is currently supported here
+        assert beam_search
+
         fsrc = open(args.source, 'r')
         ftrans = open(args.trans, 'w')
 
@@ -195,7 +202,8 @@ def main():
             seqin = line.strip()
             seq,parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
             print "Parsed Input:", parsed_in
-            trans, costs = sample(lm_model, seq, n_samples, beam_search=beam_search, normalize=args.normalize)
+            trans, costs = sample(lm_model, seq, n_samples, sampler=sampler,
+                    beam_search=beam_search, normalize=args.normalize)
             print >>ftrans, trans[numpy.argmin(costs)]
             print "Translation:", trans[numpy.argmin(costs)]
 
@@ -206,6 +214,7 @@ def main():
             try:
                 seqin = raw_input('Input Sequence: ')
                 n_samples = int(raw_input('How many samples? '))
+                alpha = None
                 if not args.beam_search:
                     alpha = float(raw_input('Inverse Temperature? '))
                 seq,parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
@@ -215,7 +224,9 @@ def main():
                 traceback.print_exc()
                 continue
 
-            trans, costs = sample(lm_model, seq, n_samples, beam_search=beam_search, normalize=args.normalize, verbose=True)
+            trans, costs = sample(lm_model, seq, n_samples, sampler=sampler,
+                    beam_search=beam_search, normalize=args.normalize,
+                    alpha=alpha, verbose=True)
 
 if __name__ == "__main__":
     main()
