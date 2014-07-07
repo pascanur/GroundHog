@@ -27,8 +27,7 @@ class SGD(object):
     def __init__(self,
                  model,
                  state,
-                 data,
-                 compil=True):
+                 data):
         """
         Parameters:
             :param model:
@@ -128,12 +127,11 @@ class SGD(object):
 
         logger.debug('Compiling grad function')
         st = time.time()
-        if compil:
-            self.train_fn = theano.function(
-                [], outs, name='train_function',
-                updates = updates,
-                givens = zip(model.inputs, loc_data),
-                profile=self.state['profile'])
+        self.train_fn = theano.function(
+            [], outs, name='train_function',
+            updates = updates,
+            givens = zip(model.inputs, loc_data),
+            profile=self.state['profile'])
         logger.debug('took {}'.format(time.time() - st))
 
         self.lr = numpy.float32(1.)
@@ -148,12 +146,11 @@ class SGD(object):
             for dn2, gn2, g in zip(self.dnorm2, self.gnorm2, self.gs)]
         updates = updates + d2_up
 
-        if compil:
-            self.update_fn = theano.function(
-                [], [], name='update_function',
-                allow_input_downcast=True,
-                updates = updates,
-                profile=self.state['profile'])
+        self.update_fn = theano.function(
+            [], [], name='update_function',
+            allow_input_downcast=True,
+            updates = updates,
+            profile=self.state['profile'])
 
         self.old_cost = 1e20
         self.schedules = model.get_schedules()
