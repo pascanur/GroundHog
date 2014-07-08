@@ -23,7 +23,7 @@ def get_model():
             state.update(cPickle.load(src))
     state.update(eval("dict({})".format(args.changes)))
 
-    logging.basicConfig(level=getattr(logging, state['level']), 
+    logging.basicConfig(level=logging.DEBUG, 
             format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     rng = numpy.random.RandomState(state['seed'])
@@ -64,7 +64,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
+def comp_scores(source_sentence, target_sentence, model, max_phrase_length, batch_size, without_segmentation=False):
 
     #Setting up comp_score function
     logger.debug("setting up comp_score function")
@@ -74,23 +74,17 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
     eol_trgt = state['null_sym_target']
     scorer = enc_dec.create_scorer(batch=True)
 
-    src_seq = parse_input(state, indx_word_src, s_word)
+    src_seq = parse_input(state, indx_word_src, source_sentence)
     if src_seq[-1] == eol_src:
         src_seq = src_seq[:-1]
 
-    trgt_seq = parse_input(state, indx_word_trgt, t_word)
+    trgt_seq = parse_input(state, indx_word_trgt, target_sentence)
     if trgt_seq[-1] == eol_trgt:
         trgt_seq = trgt_seq[:-1]
 
     n_s = len(src_seq)
     n_t = len(trgt_seq)
-
-    #Load dictionaries
-    idict_fr = cPickle.load(open(state['indx_word_target'],'r'))
-    idict_en = cPickle.load(open(state['indx_word'],'r'))
-    idict_fr[eol_trgt] = '<eol>'
-    idict_en[eol_src] = '<eol>'
-    
+   
     #Create phrase lists
     tiled_target_phrase_list = []
     tiled_source_phrase_list = []
@@ -99,10 +93,16 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
         for j in numpy.arange(i, min(i+max_phrase_length, n_t)):
             for k in xrange(n_s):
                 for l in numpy.arange(k, min(k+max_phrase_length, n_s)):
-                    tiled_target_phrase_list.append(trgt_seq[i:j+1])
-                    tiled_source_phrase_list.append(src_seq[k:l+1])
                     index_order_list.append([i, j, k, l])
 
+    logger.debug("sorting list")
+    index_order_list.sort(key=lambda (i, j, k, l): (j - i, l - k))
+    
+    logger.debug("creating phrase lists")
+    for i, j, k, l in index_order_list:
+        tiled_target_phrase_list.append(trgt_seq[i:j+1])
+        tiled_source_phrase_list.append(src_seq[k:l+1])
+    
     score_index = numpy.asarray(index_order_list)
     
     #Create paddded arrays
@@ -114,7 +114,9 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
     
     #Compute nested score dictionary
     logger.debug("computing nested score dictionary")
-    print len(src_phrase.T), " phrases scored"
+    print >>sys.stderr, "scoring ", len(src_phrase.T), " phrases"
+    #print >>sys.stderr, "length src_phrase", len(src_phrase)
+    #print >>sys.stderr, "length trgt_phrase", len(trgt_phrase)
     scores = 1e9 * numpy.ones((n_t, n_t))
     segment = {}
 
@@ -138,26 +140,27 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
         segment[key], scores[key] = min(score_dict[key].iteritems(), key=operator.itemgetter(1)) 
 
     #Print stuff
-    if 0:
+    if without_segmentation:
+        S = source_sentence.strip().split()
+        T = target_sentence.strip().split()
         for key, v in segment.iteritems():
             i, j = key
             k, l = v 
-            print  [idict_en[q] for q in src_seq[k:l+1]], \
-                     [idict_fr[q] for q in trgt_seq[i:j+1]], scores[i,j] 
+            print " ".join(S[k:l+1]), " ||| ", " ".join(T[i:j+1]), " ||| ", scores[i, j]
 
     return scores, segment
 
 
 def find_align(source, target, model, max_phrase_length, batch_size):
     [lm_model, enc_dec, indx_word_src, indx_word_trgt, state] = model
-    s_word = source.strip().split()
-    t_word = target.strip().split()
+    split_source_sentence = source.strip().split()
+    split_target_sentence = target.strip().split()
     scores, phrases = comp_scores(source, target, model, max_phrase_length, batch_size)
 
     logger.debug("starting segmentation")
 
-    n_s = len(s_word)
-    n_t = len(t_word)
+    n_s = len(split_source_sentence)
+    n_t = len(split_target_sentence)
 
     prefix_score = 1e9 * numpy.ones(n_t+1)
     prefix_score[0] = 0
@@ -192,8 +195,8 @@ def find_align(source, target, model, max_phrase_length, batch_size):
             [i, j] = segment
             value = phrases[i, j]
             [k, l] = value
-            S = s_word[k:l+1]
-            T = t_word[i:j+1]
+            S = split_source_sentence[k:l+1]
+            T = split_target_sentence[i:j+1]
             print " ".join(S), " |||  ", " ".join(T), "||| ", scores[i, j]
             phrase_table.append([S, T])
 
@@ -201,7 +204,38 @@ def find_align(source, target, model, max_phrase_length, batch_size):
 
 def main_with_segmentation():
     model = get_model()
-    max_text_len = 5
+    max_text_len = 1000
+    batch_size = 1024
+    max_phrase_length = 5
+    s_text = []
+    t_text = []
+    phrase_table = []
+    logger.debug("selecting sentences from text")
+    with open("/data/lisatmp3/pougetj/dev08_11.en") as f:
+        for i, line in enumerate(f):
+            if i>= max_text_len:
+                break
+            s_text.append(line)
+    with open("/data/lisatmp3/pougetj/dev08_11.fr") as g:
+        for i, line in enumerate(g):
+            if i>= max_text_len:
+                break
+            t_text.append(line)
+    import time
+    t0 = time.time()
+    counter = 0
+    for source, target in izip(s_text, t_text):
+        phrase_table.append(find_align(source, target, model, max_phrase_length, batch_size))
+        counter += 1
+        t1 = time.time()
+        print >>sys.stderr, "total time : ", t1 - t0
+        print >>sys.stderr, "total sentences processed : ", counter
+        print >>sys.stderr, "current size of phrase table : ", len(phrase_table)
+
+
+def main_without_segmentation():
+    model = get_model()
+    max_text_len = 1000
     batch_size = 1024
     max_phrase_length = 5
     s_text = []
@@ -219,9 +253,9 @@ def main_with_segmentation():
                 break
             t_text.append(line)
     for source, target in izip(s_text, t_text):
-        phrase_table.append(find_align(source, target, model, max_phrase_length, batch_size))
+        if len(source.strip().split()) + len(target.strip().split()) <= 80:
+            phrase_table.append(comp_scores(source, target, model, max_phrase_length, batch_size, True))
 
-    cPickle.dump(phrase_table, open("phrase_table.pkl", "wb"))
 
 if __name__ == "__main__":
     main_with_segmentation()
