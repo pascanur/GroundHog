@@ -25,6 +25,7 @@ def prototype_state():
     # These are vocabulary sizes for the source and target languages
     state['n_sym_source'] = state['null_sym_source'] + 1
     state['n_sym_target'] = state['null_sym_target'] + 1
+    state['unk_sym_target'] = 1
 
     # These are the number of input and output units
     state['nouts'] = state['n_sym_target']
@@ -109,8 +110,6 @@ def prototype_state():
 
     # Batch size
     state['bs']  = 64
-    # TODO: not used???
-    state['vbs'] = 64
     # Maximum sequence length
     state['seqlen'] = 30
 
@@ -118,19 +117,8 @@ def prototype_state():
     state['n_samples'] = 3
     state['n_examples'] = 3
 
-    # Starts a funny sampling regime
-    state['sample'] = False
-    state['sample_all_probs'] = False
+    # Activates bug fix
     state['check_first_word'] = True
-
-    # Starts scoring pairs regime
-    state['score'] = False
-    state['score_batch'] = False
-
-    # Start scoring all data regime
-    state['score_all'] = False
-    state['score_file'] = 'scores.txt'
-    state['flush_scores'] = 1000
 
     # Specifies whether old model should be reloaded first
     state['reload'] = True
@@ -164,9 +152,39 @@ def prototype_state():
 
     # Default paths
     state['prefix'] = 'model_phrase_'
-    state['model_path'] = 'model_phrase_model.npz'
 
     # When set to 0 each new model dump will be saved in a new file
     state['overwrite'] = 1
+
+    return state
+
+def state_sentence():
+    state = prototype_state()
+
+    state['target'] = ["/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.fr.h5"]
+    state['source'] = ["/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.en.h5"]
+    state['indx_word'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/ivocab_source.pkl"
+    state['indx_word_target'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/ivocab_target.pkl"
+    state['word_indx'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/vocab.en.pkl"
+    state['word_indx_trgt'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/vocab.fr.pkl"
+
+    state['null_sym_source'] = 30000
+    state['null_sym_target'] = 30000
+
+    state['n_sym_source'] = state['null_sym_source'] + 1
+    state['n_sym_target'] = state['null_sym_target'] + 1
+
+    state['nouts'] = state['n_sym_target']
+    state['nins'] = state['n_sym_source']
+
+    state['seqlen'] = 50
+
+    state['dim'] = 2000
+    state['dim_mlp'] = state['dim']
+    state['rank_n_approx'] = 620
+    state['bs']  = 256
+
+    state['prefix'] = '/data/lisatmp3/chokyun/sentence_'
+    state['model_path'] = '/data/lisatmp3/chokyun/sentence_model.npz'
 
     return state

@@ -338,14 +338,11 @@ class MainLoop(object):
                 self.step += 1
                 self.timings['step'] = self.step
                 print "took {}".format(time.time() - st)
-            except:
+            except KeyboardInterrupt:
                 self.state['wholetime'] = float(time.time() - start_time)
                 self.save()
                 if self.channel:
                     self.channel.save()
-
-                last_cost = 0
-                print 'Error in running algo (lr issue)'
                 print 'Took', (time.time() - start_time)/60., 'min'
                 raise
 
