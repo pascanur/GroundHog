@@ -1,7 +1,8 @@
 import numpy
 import logging
 import pprint
-import functools
+import operator
+import itertools
 
 import theano
 import theano.tensor as TT
@@ -21,7 +22,7 @@ from groundhog.datasets import TMIteratorPytables
 
 logger = logging.getLogger(__name__)
 
-def create_padded_batch(state, x, y, new_format=None):
+def create_padded_batch(state, x, y, return_dict=False):
     """A callback given to the iterator to transform data in suitable format
 
     :type x: list
@@ -122,26 +123,42 @@ def create_padded_batch(state, x, y, new_format=None):
     if n == 1:
         X = X[:,0]
         Y = Y[:,0]
-        Y0 = Y0[:,0]
         Xmask = Xmask[:,0]
         Ymask = Ymask[:,0]
-    if new_format:
+    if return_dict:
         # Are Y and Y0 different?
-        return new_format(X, Xmask, Y0, Y, Ymask)
+        return {'x' : X, 'x_mask' : Xmask,
+            'y': Y, 'y_mask' : Ymask}
     else:
         return X, Xmask, Y, Ymask
 
 def get_batch_iterator(state, rng):
-    new_format = lambda x,xm, y0, y, ym: {'x' : x, 'x_mask' :xm,
-            'y': y0, 'y_mask' : ym}
-    train_data = TMIteratorPytables(
+    class Iterator(TMIteratorPytables):
+        def get_homogenous_batch_iter(self):
+            while True:
+                k_batches = state['sort_k_batches']
+                batch_size = state['bs']
+                data = [TMIteratorPytables.next(self) for k in range(k_batches)]
+                data = [(x[0], y[0]) for x, y in data]
+                x = numpy.asarray(list(itertools.chain(*map(operator.itemgetter(0), data))))
+                y = numpy.asarray(list(itertools.chain(*map(operator.itemgetter(1), data))))
+                order = numpy.argsort(map(len, x))
+                for k in range(k_batches):
+                    indices = order[k * batch_size:(k + 1) * batch_size]
+                    batch = create_padded_batch(state, [x[indices]], [y[indices]],
+                            return_dict=True)
+                    if batch:
+                        yield batch
+        def next(self):
+            if not hasattr(self, "batch_iter"):
+                self.batch_iter = self.get_homogenous_batch_iter()
+            return next(self.batch_iter)
+    train_data = Iterator(
         batch_size=int(state['bs']),
         target_lfiles=state['target'],
         source_lfiles=state['source'],
-        output_format=lambda *args : create_padded_batch(state, *args,
-            new_format=new_format),
         can_fit=False,
-        queue_size=10,
+        queue_size=1000,
         cache_size=state['cache_size'],
         shuffle=state['shuffle'],
         use_infinite_loop=state['use_infinite_loop'])

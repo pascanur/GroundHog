@@ -275,7 +275,6 @@ class TMIteratorPytables(object):
                  dtype="int64",
                  use_infinite_loop=True,
                  stop=-1,
-                 output_format = None,
                  table_name = '/phrases',
                  index_name = '/indices',
                  freqs_name = '/counts',
@@ -303,7 +302,6 @@ class TMIteratorPytables(object):
         self.stop = stop
         self.can_fit = can_fit
         self.dtype = dtype
-        self.output_format = output_format
         self.shuffle = shuffle
         self.table_name = table_name
         self.index_name = index_name
@@ -355,11 +353,7 @@ class TMIteratorPytables(object):
 
         if batch[0] == None:
             raise StopIteration
-
-        if not self.output_format:
-            return batch[0], batch[1]
-        else:
-            return self.output_format(batch[0], batch[1])
+        return batch[0], batch[1]
 
 class NNJMContextIterator(object):
 

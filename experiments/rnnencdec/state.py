@@ -190,6 +190,7 @@ def prototype_sentence_state():
     state['dim_mlp'] = state['dim']
     state['rank_n_approx'] = 620
     state['bs']  = 128
+    state['sort_k_batches'] = 10
 
     state['prefix'] = 'sentence_'
 
