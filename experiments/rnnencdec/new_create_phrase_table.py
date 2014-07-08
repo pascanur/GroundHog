@@ -65,6 +65,9 @@ def parse_args():
 
 
 def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
+
+    #Setting up comp_score function
+    logger.debug("setting up comp_score function")
     [lm_model, enc_dec, indx_word_src, indx_word_trgt, state] = model
 
     eol_src = state['null_sym_source']
@@ -92,13 +95,14 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
     trgt_p_i = []
     src_p_i = []
     for i in xrange(n_t):
-        for j in numpy.arange(i, n_t):
+        for j in numpy.arange(i, min(i+max_phrase_length, n_t)):
             trgt_p_i.append([numpy.hstack((trgt_seq[i:j+1], numpy.asarray(eol_trgt))), [i,j]])
     for k in xrange(n_s):
         for l in numpy.arange(k, min(k+max_phrase_length, n_s)):
             src_p_i.append([numpy.hstack((src_seq[k:l+1], numpy.asarray(eol_src))),[k,l]])
 
     #Create paddded arrays: .13 s
+    logger.debug("creating padded arrays")
     m = max([len(a[0]) for a in src_p_i])
     M = max([len(a[0]) for a in trgt_p_i])
     
@@ -131,6 +135,7 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
     trgt_mask = trgt_mask[1:].astype("float32")
 
     #Compute score_index table: .001 s
+    logger.debug("computing score_index_table")
     score_index = []
     for trgt_element in trgt_p_i:
         for src_element in src_p_i:
@@ -139,7 +144,10 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
             score_index.append([i, j, k, l])
     score_index = numpy.asarray(score_index)
 
+
     #Compute nested score dictionary: .43s
+    logger.debug("computing nested score dictionary")
+    print len(src_phrase), " phrases scored"
     scores = 1e9 * numpy.ones((n_t, n_t))
     segment = {}
 
@@ -158,6 +166,7 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
             score_dict[i, j][k, l] = can_scores[idx_batch]
 
     #Compute best scores : .0002s
+    logger.debug("finding best scores in dictionary")
     for key in score_dict:
         segment[key], scores[key] = min(score_dict[key].iteritems(), key=operator.itemgetter(1)) 
 
@@ -176,6 +185,9 @@ def find_align(source, target, model, max_phrase_length, batch_size):
     s_word = source.strip().split()
     t_word = target.strip().split()
     scores, phrases = comp_scores(source, target, model, max_phrase_length, batch_size)
+
+    logger.debug("starting segmentation")
+
     n_s = len(s_word)
     n_t = len(t_word)
 
@@ -206,13 +218,15 @@ def find_align(source, target, model, max_phrase_length, batch_size):
 
     phrase_table = []
 
+    logger.debug("end of segmentation, beginning print")
+
     for segment in segmentation:
             [i, j] = segment
             value = phrases[i, j]
             [k, l] = value
             S = s_word[k:l+1]
             T = t_word[i:j+1]
-            print " ".join(S), " ",  " ".join(T)
+            print " ".join(S), " |||  ", " ".join(T), "||| ", scores[i, j]
             phrase_table.append([S, T])
 
     return phrase_table
@@ -225,6 +239,7 @@ def main():
     s_text = []
     t_text = []
     phrase_table = []
+    logger.debug("selecting sentences from text")
     with open("/data/lisatmp3/pougetj/dev08_11.en") as f:
         for i, line in enumerate(f):
             if i>= max_text_len:
