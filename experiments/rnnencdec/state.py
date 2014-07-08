@@ -57,11 +57,17 @@ def prototype_state():
     state['rank_n_activ'] = 'lambda x: x'
 
     # Hidden layer configuration
-    state['rec_layer'] = 'RecurrentLayer'
-    state['rec_gating'] = True
-    state['rec_reseting'] = True
-    state['rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
-    state['rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
+    state['enc_rec_layer'] = 'RecurrentLayer'
+    state['enc_rec_gating'] = True
+    state['enc_rec_reseting'] = True
+    state['enc_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
+    state['enc_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
+
+    state['dec_rec_layer'] = 'RecurrentLayer'
+    state['dec_rec_gating'] = True
+    state['dec_rec_reseting'] = True
+    state['dec_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
+    state['dec_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
 
     # Hidden-to-hidden activation function
     state['activ'] = 'lambda x: TT.tanh(x)'
@@ -112,6 +118,7 @@ def prototype_state():
     state['bs']  = 64
     # Maximum sequence length
     state['seqlen'] = 30
+    state['use_infinite_loop'] = True
 
     # Sampling hook settings
     state['n_samples'] = 3

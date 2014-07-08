@@ -11,6 +11,7 @@ from groundhog.layers import\
         MultiLayer,\
         SoftmaxLayer,\
         RecurrentLayer,\
+        RecursiveConvolutionalLayer,\
         UnaryOp,\
         Shift,\
         LastState,\
@@ -144,7 +145,8 @@ def get_batch_iterator(state, rng):
         can_fit=False,
         queue_size=10,
         cache_size=state['cache_size'],
-        shuffle=state['shuffle'])
+        shuffle=state['shuffle'],
+        use_infinite_loop=state['use_infinite_loop'])
     return train_data
 
 class ReplicateLayer(Layer):
@@ -202,6 +204,9 @@ class Maxout(object):
             x = x.max(2)
         return x
 
+def _prefix(p, s):
+    return '%s_%s'%(p, s)
+
 class EncoderDecoderBase(object):
 
     def _create_embedding_layers(self, prefix):
@@ -230,13 +235,13 @@ class EncoderDecoderBase(object):
                 self.rng,
                 name='{}_input_embdr_{}'.format(prefix, level),
                 **embedder_kwargs)
-            if self.state['rec_gating']:
+            if self.state[_prefix(prefix,'rec_gating')]:
                 self.update_embedders[level] = MultiLayer(
                     self.rng,
                     learn_bias=False,
                     name='{}_update_embdr_{}'.format(prefix, level),
                     **embedder_kwargs)
-            if self.state['rec_reseting']:
+            if self.state[_prefix(prefix,'rec_reseting')]:
                 self.reset_embedders[level] =  MultiLayer(
                     self.rng,
                     learn_bias=False,
@@ -257,11 +262,11 @@ class EncoderDecoderBase(object):
             self.inputters[level] = MultiLayer(self.rng,
                     name="{}_inputter_{}".format(prefix, level),
                     **inter_level_kwargs)
-            if self.state['rec_reseting']:
+            if self.state[_prefix(prefix,'rec_reseting')]:
                 self.resetters[level] = MultiLayer(self.rng,
                     name="{}_reseter_{}".format(prefix, level),
                     **inter_level_kwargs)
-            if self.state['rec_gating']:
+            if self.state[_prefix(prefix,'rec_gating')]:
                 self.updaters[level] = MultiLayer(self.rng,
                     name="{}_updater_{}".format(prefix, level),
                     **inter_level_kwargs)
@@ -269,7 +274,7 @@ class EncoderDecoderBase(object):
     def _create_transition_layers(self, prefix):
         self.transitions = []
         for level in range(self.num_levels):
-            self.transitions.append(eval(self.state['rec_layer'])(
+            self.transitions.append(eval(self.state[_prefix(prefix,'rec_layer')])(
                     self.rng,
                     n_hids=self.state['dim'],
                     activation=self.state['activ'],
@@ -278,10 +283,10 @@ class EncoderDecoderBase(object):
                     init_fn=self.state['rec_weight_init_fn'],
                     weight_noise=self.state['weight_noise_rec'],
                     dropout=self.state['dropout_rec'],
-                    gating=self.state['rec_gating'],
-                    gater_activation=self.state['rec_gater'],
-                    reseting=self.state['rec_reseting'],
-                    reseter_activation=self.state['rec_reseter'],
+                    gating=self.state[_prefix(prefix,'rec_gating')],
+                    gater_activation=self.state[_prefix(prefix,'rec_gater')],
+                    reseting=self.state[_prefix(prefix,'rec_reseting')],
+                    reseter_activation=self.state[_prefix(prefix,'rec_reseter')],
                     name='{}_transition_{}'.format(prefix, level)))
 
 class Encoder(EncoderDecoderBase):
@@ -466,13 +471,13 @@ class Decoder(EncoderDecoderBase):
                 name='dec_dec_inputter_{}'.format(level),
                 learn_bias=False,
                 **decoding_kwargs)
-            if self.state['rec_gating']:
+            if self.state[_prefix('dec','rec_gating')]:
                 self.decode_updaters[level] = MultiLayer(
                     self.rng,
                     name='dec_dec_updater_{}'.format(level),
                     learn_bias=False,
                     **decoding_kwargs)
-            if self.state['rec_reseting']:
+            if self.state[_prefix('dec','rec_reseting')]:
                 self.decode_resetters[level] = MultiLayer(
                     self.rng,
                     name='dec_dec_reseter_{}'.format(level),
@@ -810,7 +815,7 @@ class RNNEncoderDecoder(object):
         self.n_steps = TT.lscalar("n_steps")
         self.T = TT.scalar("T")
         self.sampling_c = self.encoder.build_encoder(
-                self.sampling_x, x_mask=False, use_noise=False).out
+                self.sampling_x, x_mask=None, use_noise=False).out
         (self.sample, self.sample_log_prob), self.sampling_updates =\
             self.decoder.build_sampler(self.n_samples, self.n_steps, self.T, self.sampling_c)
 
