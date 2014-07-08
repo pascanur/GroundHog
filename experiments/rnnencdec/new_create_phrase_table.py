@@ -8,7 +8,7 @@ import traceback
 import logging
 import numpy
 from itertools import izip, product
-from experiments.rnnencdec import RNNEncoderDecoder, prototype_state, parse_input
+from experiments.rnnencdec import RNNEncoderDecoder, prototype_state, parse_input, create_padded_batch
 from collections import defaultdict
 import operator
 
@@ -91,73 +91,40 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
     idict_fr[eol_trgt] = '<eol>'
     idict_en[eol_src] = '<eol>'
     
-    #Create phrase list: .001s
-    trgt_p_i = []
-    src_p_i = []
+    #Create phrase lists
+    tiled_target_phrase_list = []
+    tiled_source_phrase_list = []
+    index_order_list = []
     for i in xrange(n_t):
         for j in numpy.arange(i, min(i+max_phrase_length, n_t)):
-            trgt_p_i.append([numpy.hstack((trgt_seq[i:j+1], numpy.asarray(eol_trgt))), [i,j]])
-    for k in xrange(n_s):
-        for l in numpy.arange(k, min(k+max_phrase_length, n_s)):
-            src_p_i.append([numpy.hstack((src_seq[k:l+1], numpy.asarray(eol_src))),[k,l]])
+            for k in xrange(n_s):
+                for l in numpy.arange(k, min(k+max_phrase_length, n_s)):
+                    tiled_target_phrase_list.append(trgt_seq[i:j+1])
+                    tiled_source_phrase_list.append(src_seq[k:l+1])
+                    index_order_list.append([i, j, k, l])
 
-    #Create paddded arrays: .13 s
-    logger.debug("creating padded arrays")
-    m = max([len(a[0]) for a in src_p_i])
-    M = max([len(a[0]) for a in trgt_p_i])
+    score_index = numpy.asarray(index_order_list)
     
-    src_phrase = numpy.empty((m,))
-    src_mask = numpy.empty((m,))
-    trgt_phrase = numpy.empty((M,))
-    trgt_mask = numpy.empty((M,))
+    #Create paddded arrays
+    logger.debug("creating padded arrays")
 
-    for trgt in trgt_p_i:
-       for src in chunks(src_p_i, batch_size): 
-           i, j = trgt[1]
-           padded_trgt_phrase = numpy.pad(numpy.tile(trgt[0], (len(src), 1)), ((0, 0),(0, M-len(trgt[0]))),
-                                          mode="constant", constant_values=(0, eol_trgt))
-           trgt_phrase = numpy.vstack((trgt_phrase, padded_trgt_phrase))
-           padded_trgt_mask = numpy.pad(numpy.ones((len(src), len(trgt[0])), dtype="float32"), \
-                                        ((0, 0),(0, M - len(trgt[0]))), mode="constant", constant_values=(0, 0))
-           trgt_mask = numpy.vstack((trgt_mask, padded_trgt_mask))
-
-           for p in src:
-               padded_p = numpy.pad(p[0], (0, m-len(p[0])), mode='constant', \
-                                    constant_values=(0, eol_src)).astype("int64")
-               src_phrase = numpy.vstack((src_phrase, padded_p)) 
-               padded_mask = numpy.pad(numpy.ones(len(p[0]), dtype="float32"), (0, m-len(p[0])), \
-                                    mode="constant", constant_values=(0, 0)).astype("int64")
-               src_mask = numpy.vstack((src_mask, padded_mask))
-
-    src_phrase = src_phrase[1:].astype("int64")
-    src_mask = src_mask[1:].astype("float32")
-    trgt_phrase = trgt_phrase[1:].astype("int64")
-    trgt_mask = trgt_mask[1:].astype("float32")
-
-    #Compute score_index table: .001 s
-    logger.debug("computing score_index_table")
-    score_index = []
-    for trgt_element in trgt_p_i:
-        for src_element in src_p_i:
-            i, j = trgt_element[1]
-            k, l = src_element[1]
-            score_index.append([i, j, k, l])
-    score_index = numpy.asarray(score_index)
-
-
-    #Compute nested score dictionary: .43s
+    src_phrase, src_mask, trgt_phrase, trgt_mask = \
+            create_padded_batch(state, [numpy.asarray(tiled_source_phrase_list)],
+                                       [numpy.asarray(tiled_target_phrase_list)])
+    
+    #Compute nested score dictionary
     logger.debug("computing nested score dictionary")
-    print len(src_phrase), " phrases scored"
+    print len(src_phrase.T), " phrases scored"
     scores = 1e9 * numpy.ones((n_t, n_t))
     segment = {}
 
     score_dict = defaultdict(dict)
 
     for batch_idx in xrange(0, len(score_index), batch_size):
-        source_phrase = src_phrase[batch_idx:batch_idx + batch_size].T
-        target_phrase = trgt_phrase[batch_idx:batch_idx + batch_size].T
-        source_mask = src_mask[batch_idx:batch_idx + batch_size].T
-        target_mask = trgt_mask[batch_idx:batch_idx + batch_size].T
+        source_phrase = src_phrase[:,batch_idx:batch_idx + batch_size]
+        target_phrase = trgt_phrase[:,batch_idx:batch_idx + batch_size]
+        source_mask = src_mask[:,batch_idx:batch_idx + batch_size]
+        target_mask = trgt_mask[:,batch_idx:batch_idx + batch_size]
         can_scores =  - scorer(source_phrase, target_phrase, source_mask, target_mask)[0]
 
         for idx_batch, idx_pair in enumerate(numpy.arange(batch_idx, 
@@ -165,7 +132,7 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
             i, j, k, l = score_index[idx_pair]
             score_dict[i, j][k, l] = can_scores[idx_batch]
 
-    #Compute best scores : .0002s
+    #Compute best scores
     logger.debug("finding best scores in dictionary")
     for key in score_dict:
         segment[key], scores[key] = min(score_dict[key].iteritems(), key=operator.itemgetter(1)) 
@@ -175,7 +142,8 @@ def comp_scores(s_word, t_word, model, max_phrase_length, batch_size):
         for key, v in segment.iteritems():
             i, j = key
             k, l = v 
-            print  [idict_en[q] for q in src_seq[k:l+1]],  [idict_fr[q] for q in trgt_seq[i:j+1]], scores[i,j] 
+            print  [idict_en[q] for q in src_seq[k:l+1]], \
+                     [idict_fr[q] for q in trgt_seq[i:j+1]], scores[i,j] 
 
     return scores, segment
 
@@ -231,10 +199,10 @@ def find_align(source, target, model, max_phrase_length, batch_size):
 
     return phrase_table
 
-def main():
+def main_with_segmentation():
     model = get_model()
     max_text_len = 5
-    batch_size =  1024
+    batch_size = 1024
     max_phrase_length = 5
     s_text = []
     t_text = []
@@ -255,7 +223,6 @@ def main():
 
     cPickle.dump(phrase_table, open("phrase_table.pkl", "wb"))
 
-
 if __name__ == "__main__":
-    main()
+    main_with_segmentation()
 

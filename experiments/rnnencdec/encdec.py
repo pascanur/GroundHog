@@ -49,7 +49,8 @@ def create_padded_batch(state, x, y, new_format=None):
     # Similar length for all target sequences
     my = numpy.minimum(state['seqlen'], max([len(xx) for xx in y[0]]))+1
     # Just batch size
-    n = state['bs'] # FIXME: may become inefficient later with a large minibatch
+    #n = state['bs'] # FIXME: may become inefficient later with a large minibatch
+    n = x[0].shape[0]
 
     X = numpy.zeros((mx, n), dtype='int64')
     Y0 = numpy.zeros((my, n), dtype='int64')
