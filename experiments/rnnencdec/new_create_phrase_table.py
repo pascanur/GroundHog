@@ -85,7 +85,7 @@ def comp_scores(source_sentence, target_sentence, model, max_phrase_length, batc
     n_s = len(src_seq)
     n_t = len(trgt_seq)
    
-    #Create phrase lists
+    #Create sorted phrase lists
     tiled_target_phrase_list = []
     tiled_source_phrase_list = []
     index_order_list = []
