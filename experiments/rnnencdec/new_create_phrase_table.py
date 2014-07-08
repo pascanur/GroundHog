@@ -23,7 +23,7 @@ def get_model():
             state.update(cPickle.load(src))
     state.update(eval("dict({})".format(args.changes)))
 
-    logging.basicConfig(level=logging.DEBUG, 
+    logging.basicConfig(level=logging.ERROR, 
             format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     rng = numpy.random.RandomState(state['seed'])
@@ -106,27 +106,30 @@ def comp_scores(source_sentence, target_sentence, model, max_phrase_length, batc
     score_index = numpy.asarray(index_order_list)
     
     #Create paddded arrays
-    logger.debug("creating padded arrays")
+    #logger.debug("creating padded arrays")
 
-    src_phrase, src_mask, trgt_phrase, trgt_mask = \
-            create_padded_batch(state, [numpy.asarray(tiled_source_phrase_list)],
-                                       [numpy.asarray(tiled_target_phrase_list)])
+    
     
     #Compute nested score dictionary
     logger.debug("computing nested score dictionary")
-    print >>sys.stderr, "scoring ", len(src_phrase.T), " phrases"
+    
+    print >>sys.stderr, "scoring ", len(index_order_list), " phrases"
     #print >>sys.stderr, "length src_phrase", len(src_phrase)
     #print >>sys.stderr, "length trgt_phrase", len(trgt_phrase)
-    scores = 1e9 * numpy.ones((n_t, n_t))
-    segment = {}
+
 
     score_dict = defaultdict(dict)
 
     for batch_idx in xrange(0, len(score_index), batch_size):
-        source_phrase = src_phrase[:,batch_idx:batch_idx + batch_size]
-        target_phrase = trgt_phrase[:,batch_idx:batch_idx + batch_size]
-        source_mask = src_mask[:,batch_idx:batch_idx + batch_size]
-        target_mask = trgt_mask[:,batch_idx:batch_idx + batch_size]
+        source_phrase, source_mask, target_phrase, target_mask = create_padded_batch(state, 
+                                       [numpy.asarray([tiled_source_phrase_list[i] for i in xrange(batch_idx, min(batch_idx + batch_size, len(index_order_list)))])],
+                                       [numpy.asarray([tiled_target_phrase_list[i] for i in xrange(batch_idx, min(batch_idx + batch_size, len(index_order_list)))])])
+        print "len(source_phrase), print len(target_phrase)", len(source_phrase), len(target_phrase)
+        logger.debug("scoring batch number {}".format(batch_idx)) 
+        #source_phrase = src_phrase[:,batch_idx:batch_idx + batch_size]
+        #target_phrase = trgt_phrase[:,batch_idx:batch_idx + batch_size]
+        #source_mask = src_mask[:,batch_idx:batch_idx + batch_size]
+        #target_mask = trgt_mask[:,batch_idx:batch_idx + batch_size]
         can_scores =  - scorer(source_phrase, target_phrase, source_mask, target_mask)[0]
 
         for idx_batch, idx_pair in enumerate(numpy.arange(batch_idx, 
@@ -136,6 +139,10 @@ def comp_scores(source_sentence, target_sentence, model, max_phrase_length, batc
 
     #Compute best scores
     logger.debug("finding best scores in dictionary")
+
+    scores = 1e9 * numpy.ones((n_t, n_t))
+    segment = {}
+
     for key in score_dict:
         segment[key], scores[key] = min(score_dict[key].iteritems(), key=operator.itemgetter(1)) 
 
@@ -236,7 +243,7 @@ def main_with_segmentation():
 def main_without_segmentation():
     model = get_model()
     max_text_len = 1000
-    batch_size = 1024
+    batch_size = 512 #1024
     max_phrase_length = 5
     s_text = []
     t_text = []
