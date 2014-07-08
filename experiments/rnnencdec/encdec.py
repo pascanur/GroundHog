@@ -21,127 +21,125 @@ from groundhog.datasets import TMIteratorPytables
 
 logger = logging.getLogger(__name__)
 
-def get_batch_iterator(state, rng):
+def create_padded_batch(state, x, y, new_format=None):
+    """A callback given to the iterator to transform data in suitable format
 
-    def out_format (x, y, new_format=None):
-        """A callback given to the iterator to transform data in suitable format
+    :type x: list
+    :param x: list of numpy.array's, each array is a batch of phrases
+        in some of source languages
 
-        :type x: list
-        :param x: list of numpy.array's, each array is a batch of phrases
-            in some of source languages
+    :type y: list
+    :param y: same as x but for target languages
 
-        :type y: list
-        :param y: same as x but for target languages
+    :param new_format: a wrapper to be applied on top of returned value
 
-        :param new_format: a wrapper to be applied on top of returned value
+    :returns: a tuple (X, Xmask, Y, Ymask) where
+        - X is a matrix, each column contains a source sequence
+        - Xmask is 0-1 matrix, each column marks the sequence positions in X
+        - Y and Ymask are matrices of the same format for target sequences
+        OR new_format applied to the tuple
 
-        :returns: a tuple (X, Xmask, Y, Ymask) where
-            - X is a matrix, each column contains a source sequence
-            - Xmask is 0-1 matrix, each column marks the sequence positions in X
-            - Y and Ymask are matrices of the same format for target sequences
-            OR new_format applied to the tuple
+    Notes:
+    * actually works only with x[0] and y[0]
+    * len(x[0]) thus is just the minibatch size
+    * len(x[0][idx]) is the size of sequence idx
+    """
 
-        Notes:
-        * actually works only with x[0] and y[0]
-        * len(x[0]) thus is just the minibatch size
-        * len(x[0][idx]) is the size of sequence idx
-        """
+    # Similar length for all source sequences
+    mx = numpy.minimum(state['seqlen'], max([len(xx) for xx in x[0]]))+1
+    # Similar length for all target sequences
+    my = numpy.minimum(state['seqlen'], max([len(xx) for xx in y[0]]))+1
+    # Just batch size
+    n = state['bs'] # FIXME: may become inefficient later with a large minibatch
 
-        # Similar length for all source sequences
-        mx = numpy.minimum(state['seqlen'], max([len(xx) for xx in x[0]]))+1
-        # Similar length for all target sequences
-        my = numpy.minimum(state['seqlen'], max([len(xx) for xx in y[0]]))+1
-        # Just batch size
-        n = state['bs'] # FIXME: may become inefficient later with a large minibatch
+    X = numpy.zeros((mx, n), dtype='int64')
+    Y0 = numpy.zeros((my, n), dtype='int64')
+    Y = numpy.zeros((my, n), dtype='int64')
+    Xmask = numpy.zeros((mx, n), dtype='float32')
+    Ymask = numpy.zeros((my, n), dtype='float32')
 
-        X = numpy.zeros((mx, n), dtype='int64')
-        Y0 = numpy.zeros((my, n), dtype='int64')
-        Y = numpy.zeros((my, n), dtype='int64')
-        Xmask = numpy.zeros((mx, n), dtype='float32')
-        Ymask = numpy.zeros((my, n), dtype='float32')
-
-        # Fill X and Xmask
-        for idx in xrange(len(x[0])):
-            # Insert sequence idx in a column of matrix X
-            if mx < len(x[0][idx]):
-                # If sequence idx it too long,
-                # we either choose random subsequence or just take a prefix
-                if state['randstart']:
-                    stx = numpy.random.randint(0, len(x[0][idx]) - mx)
-                else:
-                    stx = 0
-                X[:mx, idx] = x[0][idx][stx:stx+mx]
+    # Fill X and Xmask
+    for idx in xrange(len(x[0])):
+        # Insert sequence idx in a column of matrix X
+        if mx < len(x[0][idx]):
+            # If sequence idx it too long,
+            # we either choose random subsequence or just take a prefix
+            if state['randstart']:
+                stx = numpy.random.randint(0, len(x[0][idx]) - mx)
             else:
-                X[:len(x[0][idx]), idx] = x[0][idx][:mx]
-
-            # Mark the end of phrase
-            if len(x[0][idx]) < mx:
-                X[len(x[0][idx]):, idx] = state['null_sym_source']
-
-            # Initialize Xmask column with ones in all positions that
-            # were just set in X
-            Xmask[:len(x[0][idx]), idx] = 1.
-            if len(x[0][idx]) < mx:
-                Xmask[len(x[0][idx]), idx] = 1.
-
-        # Fill Y and Ymask in the same way as X and Xmask in the previous loop
-        for idx in xrange(len(y[0])):
-            Y0[:len(y[0][idx]), idx] = y[0][idx][:my]
-            if len(y[0][idx]) < my:
-                Y0[len(y[0][idx]):, idx] = state['null_sym_target']
-            Ymask[:len(y[0][idx]), idx] = 1.
-            if len(y[0][idx]) < my:
-                Ymask[len(y[0][idx]), idx] = 1.
-
-        Y = Y0.copy()
-
-        null_inputs = numpy.zeros(X.shape[1])
-
-        # We say that an input pair is valid if both:
-        # - either source sequence or target sequence is non-empty
-        # - source sequence and target sequence have null_sym ending
-        # Why did not we filter them earlier?
-        for idx in xrange(X.shape[1]):
-            if numpy.sum(Xmask[:,idx]) == 0 and numpy.sum(Ymask[:,idx]) == 0:
-                null_inputs[idx] = 1
-            if Xmask[-1,idx] and X[-1,idx] != state['null_sym_source']:
-                null_inputs[idx] = 1
-            if Ymask[-1,idx] and Y0[-1,idx] != state['null_sym_target']:
-                null_inputs[idx] = 1
-
-        valid_inputs = 1. - null_inputs
-
-        # Leave only valid inputs
-        X = X[:,valid_inputs.nonzero()[0]]
-        Y = Y[:,valid_inputs.nonzero()[0]]
-        Y0 = Y0[:,valid_inputs.nonzero()[0]]
-        Xmask = Xmask[:,valid_inputs.nonzero()[0]]
-        Ymask = Ymask[:,valid_inputs.nonzero()[0]]
-
-        if len(valid_inputs.nonzero()[0]) <= 0:
-            return None
-
-        if n == 1:
-            X = X[:,0]
-            Y = Y[:,0]
-            Y0 = Y0[:,0]
-            Xmask = Xmask[:,0]
-            Ymask = Ymask[:,0]
-        if new_format:
-            # Are Y and Y0 different?
-            return new_format(X, Xmask, Y0, Y, Ymask)
+                stx = 0
+            X[:mx, idx] = x[0][idx][stx:stx+mx]
         else:
-            return X, Xmask, Y, Ymask
+            X[:len(x[0][idx]), idx] = x[0][idx][:mx]
 
+        # Mark the end of phrase
+        if len(x[0][idx]) < mx:
+            X[len(x[0][idx]):, idx] = state['null_sym_source']
+
+        # Initialize Xmask column with ones in all positions that
+        # were just set in X
+        Xmask[:len(x[0][idx]), idx] = 1.
+        if len(x[0][idx]) < mx:
+            Xmask[len(x[0][idx]), idx] = 1.
+
+    # Fill Y and Ymask in the same way as X and Xmask in the previous loop
+    for idx in xrange(len(y[0])):
+        Y0[:len(y[0][idx]), idx] = y[0][idx][:my]
+        if len(y[0][idx]) < my:
+            Y0[len(y[0][idx]):, idx] = state['null_sym_target']
+        Ymask[:len(y[0][idx]), idx] = 1.
+        if len(y[0][idx]) < my:
+            Ymask[len(y[0][idx]), idx] = 1.
+
+    Y = Y0.copy()
+
+    null_inputs = numpy.zeros(X.shape[1])
+
+    # We say that an input pair is valid if both:
+    # - either source sequence or target sequence is non-empty
+    # - source sequence and target sequence have null_sym ending
+    # Why did not we filter them earlier?
+    for idx in xrange(X.shape[1]):
+        if numpy.sum(Xmask[:,idx]) == 0 and numpy.sum(Ymask[:,idx]) == 0:
+            null_inputs[idx] = 1
+        if Xmask[-1,idx] and X[-1,idx] != state['null_sym_source']:
+            null_inputs[idx] = 1
+        if Ymask[-1,idx] and Y0[-1,idx] != state['null_sym_target']:
+            null_inputs[idx] = 1
+
+    valid_inputs = 1. - null_inputs
+
+    # Leave only valid inputs
+    X = X[:,valid_inputs.nonzero()[0]]
+    Y = Y[:,valid_inputs.nonzero()[0]]
+    Y0 = Y0[:,valid_inputs.nonzero()[0]]
+    Xmask = Xmask[:,valid_inputs.nonzero()[0]]
+    Ymask = Ymask[:,valid_inputs.nonzero()[0]]
+
+    if len(valid_inputs.nonzero()[0]) <= 0:
+        return None
+
+    if n == 1:
+        X = X[:,0]
+        Y = Y[:,0]
+        Y0 = Y0[:,0]
+        Xmask = Xmask[:,0]
+        Ymask = Ymask[:,0]
+    if new_format:
+        # Are Y and Y0 different?
+        return new_format(X, Xmask, Y0, Y, Ymask)
+    else:
+        return X, Xmask, Y, Ymask
+
+def get_batch_iterator(state, rng):
     new_format = lambda x,xm, y0, y, ym: {'x' : x, 'x_mask' :xm,
             'y': y0, 'y_mask' : ym}
-
     train_data = TMIteratorPytables(
         batch_size=int(state['bs']),
         target_lfiles=state['target'],
         source_lfiles=state['source'],
-        output_format=lambda *args : out_format(*args,
-                                                  new_format=new_format),
+        output_format=lambda *args : create_padded_batch(state, *args,
+            new_format=new_format),
         can_fit=False,
         queue_size=10,
         cache_size=state['cache_size'],
@@ -287,6 +285,7 @@ class EncoderDecoderBase(object):
                     gater_activation=self.state[_prefix(prefix,'rec_gater')],
                     reseting=self.state[_prefix(prefix,'rec_reseting')],
                     reseter_activation=self.state[_prefix(prefix,'rec_reseter')],
+                    profile=self.state['profile'],
                     name='{}_transition_{}'.format(prefix, level)))
 
 class Encoder(EncoderDecoderBase):

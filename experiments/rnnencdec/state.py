@@ -165,7 +165,7 @@ def prototype_state():
 
     return state
 
-def state_sentence():
+def prototype_sentence_state():
     state = prototype_state()
 
     state['target'] = ["/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.fr.h5"]
@@ -189,9 +189,15 @@ def state_sentence():
     state['dim'] = 2000
     state['dim_mlp'] = state['dim']
     state['rank_n_approx'] = 620
-    state['bs']  = 256
+    state['bs']  = 128
 
-    state['prefix'] = '/data/lisatmp3/chokyun/sentence_'
-    state['model_path'] = '/data/lisatmp3/chokyun/sentence_model.npz'
+    state['prefix'] = 'sentence_'
 
+    return state
+
+def prototype_autoenc_state():
+    state = prototype_sentence_state()
+    state['target'] = ["/data/lisatmp3/bahdanau/mt/binarized_text.shuffled.en.h5"]
+    state['indx_word_target'] = state['indx_word']
+    state['word_indx_trgt'] = state['word_indx']
     return state
