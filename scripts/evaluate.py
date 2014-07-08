@@ -16,6 +16,7 @@ def parse_args():
     parser.add_argument("--finish", type=int, default=10 ** 9, help="Finish with that iteration")
     parser.add_argument("--window", type=int, default=100, help="Window width")
     parser.add_argument("--hours", action="store_true", default=False, help="Display time on X-axis")
+    parser.add_argument("--legend", default=None, help="Legend to use in plot")
     parser.add_argument("timings", nargs="+", help="Path to timing files")
     parser.add_argument("plot_path", help="Path to save plot")
     return parser.parse_args()
@@ -39,5 +40,7 @@ if __name__ == "__main__":
     for data in datas:
         pyplot.plot(data.index, data['traincost'])
 
-    pyplot.legend(range(len(datas)))
+    pyplot.xlabel("hours" if args.hours else "iterations")
+    pyplot.ylabel("log_2 likelihood")
+    pyplot.legend(args.legend.split(",") if args.legend else range(len(datas)))
     pyplot.savefig(args.plot_path)
