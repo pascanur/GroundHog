@@ -158,7 +158,7 @@ def prototype_state():
     state['on_nan'] = 'raise'
 
     # Default paths
-    state['prefix'] = 'model_phrase_'
+    state['prefix'] = 'phrase_'
 
     # When set to 0 each new model dump will be saved in a new file
     state['overwrite'] = 1
