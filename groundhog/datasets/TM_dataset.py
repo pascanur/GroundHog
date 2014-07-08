@@ -327,23 +327,6 @@ class TMIteratorPytables(object):
         self.gather.exitFlag = True
         self.gather.join()
 
-    def load_files(self):
-        if self.target_lfiles is not None:
-            for target_lfile in self.target_lfiles:
-                target_lang = tables.open_file(target_lfile, 'r')
-                self.target_langs.append([target_lang.get_node(self.table_name),
-                    target_lang.get_node(self.index_name)])
-
-        for source_lfile in self.source_lfiles:
-            source_lang = tables.open_file(source_lfile, 'r')
-            self.source_langs.append([source_lang.get_node(self.table_name),
-                source_lang.get_node(self.index_name)])
-        self.data_len = self.source_langs[-1][1].shape[0]
-
-        self.idxs = np.arange(self.data_len)
-        if self.shuffle:
-            np.random.shuffle(self.idxs)
-
     def __iter__(self):
         return self
 
