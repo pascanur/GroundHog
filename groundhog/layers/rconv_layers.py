@@ -220,6 +220,8 @@ class RecursiveConvolutionalLayer(Layer):
             b_hh = b_hh.dimshuffle('x',0)
 
         def _level_fprop(mask, prev_level):
+            lower_level = prev_level
+
             prev_shifted = TT.zeros_like(prev_level)
             prev_shifted = TT.set_subtensor(prev_shifted[1:], prev_level[:-1])
             prev_shifted = TT.dot(prev_shifted, U_hh)
@@ -230,7 +232,7 @@ class RecursiveConvolutionalLayer(Layer):
                     mask = mask.dimshuffle('x',0,'x')
                 else:
                     mask = mask.dimshuffle('x', 0)
-                new_level = mask * act + (1. - mask) * prev_level
+                new_level = mask * act + (1. - mask) * lower_level
             else:
                 new_level = act
 
@@ -242,6 +244,7 @@ class RecursiveConvolutionalLayer(Layer):
                         name='layer_%s'%self.name,
                         profile=self.profile,
                         n_steps = nsteps)
+
         # Note that only the last rval[-1][-1] makes sense in this case
         new_h = rval[-1] 
         self.out = rval[-1]
