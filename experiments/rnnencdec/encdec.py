@@ -18,7 +18,7 @@ from groundhog.layers import\
         LastState,\
         DropOp
 from groundhog.models import LM_Model
-from groundhog.datasets import TMIteratorPytables
+from groundhog.datasets import PytablesBitextIterator
 
 logger = logging.getLogger(__name__)
 
@@ -116,9 +116,10 @@ def create_padded_batch(state, x, y, return_dict=False):
     Y0 = Y0[:,valid_inputs.nonzero()[0]]
     Xmask = Xmask[:,valid_inputs.nonzero()[0]]
     Ymask = Ymask[:,valid_inputs.nonzero()[0]]
-
     if len(valid_inputs.nonzero()[0]) <= 0:
         return None
+    logger.debug("X shape {}, Y shape {}, Xmask mean {}, Ymask mean {}".format(
+        X.shape, Y.shape, Xmask.mean(), Ymask.mean()))
 
     if n == 1:
         X = X[:,0]
@@ -133,35 +134,57 @@ def create_padded_batch(state, x, y, return_dict=False):
         return X, Xmask, Y, Ymask
 
 def get_batch_iterator(state, rng):
-    class Iterator(TMIteratorPytables):
+
+    class Iterator(PytablesBitextIterator):
+
+        def __init__(self, *args, **kwargs):
+            PytablesBitextIterator.__init__(self, *args, **kwargs)
+            self.batch_iter = None
+            self.peeked_batch = None
+
         def get_homogenous_batch_iter(self):
             while True:
                 k_batches = state['sort_k_batches']
                 batch_size = state['bs']
-                data = [TMIteratorPytables.next(self) for k in range(k_batches)]
-                data = [(x[0], y[0]) for x, y in data]
+                data = [PytablesBitextIterator.next(self) for k in range(k_batches)]
                 x = numpy.asarray(list(itertools.chain(*map(operator.itemgetter(0), data))))
                 y = numpy.asarray(list(itertools.chain(*map(operator.itemgetter(1), data))))
-                order = numpy.argsort(map(len, x))
+                lens = numpy.asarray([map(len, x), map(len, y)])
+                order = numpy.argsort(lens.max(axis=0))
                 for k in range(k_batches):
                     indices = order[k * batch_size:(k + 1) * batch_size]
                     batch = create_padded_batch(state, [x[indices]], [y[indices]],
                             return_dict=True)
                     if batch:
                         yield batch
-        def next(self):
-            if not hasattr(self, "batch_iter"):
+
+        def next(self, peek=False):
+            if not self.batch_iter:
                 self.batch_iter = self.get_homogenous_batch_iter()
-            return next(self.batch_iter)
+
+            if self.peeked_batch:
+                # Only allow to peek one batch
+                assert not peek
+                logger.debug("Use peeked batch")
+                batch = self.peeked_batch
+                self.peeked_batch = None
+                return batch
+
+            batch = next(self.batch_iter)
+            if peek:
+                self.peeked_batch = batch
+            return batch
+
     train_data = Iterator(
         batch_size=int(state['bs']),
-        target_lfiles=state['target'],
-        source_lfiles=state['source'],
+        target_file=state['target'][0],
+        source_file=state['source'][0],
         can_fit=False,
         queue_size=1000,
         cache_size=state['cache_size'],
         shuffle=state['shuffle'],
-        use_infinite_loop=state['use_infinite_loop'])
+        use_infinite_loop=state['use_infinite_loop'],
+        max_len=state['seqlen'])
     return train_data
 
 class ReplicateLayer(Layer):

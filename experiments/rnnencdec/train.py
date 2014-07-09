@@ -30,7 +30,7 @@ class RandomSamplePrinter(object):
 
         sample_idx = 0
         while sample_idx < self.state['n_examples']:
-            batch = self.train_iter.next()
+            batch = self.train_iter.next(peek=True)
             xs, ys = batch['x'], batch['y']
             for seq_idx in range(xs.shape[1]):
                 if sample_idx == self.state['n_examples']:

@@ -159,165 +159,86 @@ class TMIterator(object):
         else:
             return self.output_format(source_data, target_data)
 
-class TMIteratorPytablesGatherProcessing(threading.Thread):
-    def __init__(self,
-            datasetIter,
-            exitFlag,
-            queue):
+class PytablesBitextFetcher(threading.Thread):
+    def __init__(self, parent):
         threading.Thread.__init__(self)
-        self.datasetIter = datasetIter
-        self.exitFlag = exitFlag
-        self.queue = queue
+        self.parent = parent
 
     def run(self):
-        self.target_langs = []
-        self.source_langs = []
+        diter = self.parent
 
-        if self.datasetIter.can_fit:
+        driver = None
+        if diter.can_fit:
             driver = "H5FD_CORE"
-        else:
-            driver = None
 
-        if self.datasetIter.target_lfiles is not None:
-            for target_lfile in self.datasetIter.target_lfiles:
-                target_lang = tables.open_file(target_lfile, 'r', driver=driver)
-                self.target_langs.append([
-                    target_lang.get_node(self.datasetIter.table_name),
-                    target_lang.get_node(self.datasetIter.index_name)])
+        target_table = tables.open_file(diter.target_file, 'r', driver=driver)
+        target_data, target_index = (target_table.get_node(diter.table_name),
+            target_table.get_node(diter.index_name))
 
-        for source_lfile in self.datasetIter.source_lfiles:
-            source_lang = tables.open_file(source_lfile, 'r', driver=driver)
-            self.source_langs.append([
-                source_lang.get_node(self.datasetIter.table_name),
-                source_lang.get_node(self.datasetIter.index_name)])
-            try:
-                freqs = source_lang.get_node(self.datasetIter.freqs_name)
-                self.source_langs[-1].append(freqs)
-            except tables.NoSuchNodeError:
-                pass
-        self.data_len = self.source_langs[-1][1].shape[0]
+        source_table = tables.open_file(diter.source_file, 'r', driver=driver)
+        source_data, source_index = (source_table.get_node(diter.table_name),
+            source_table.get_node(diter.index_name))
 
-        if self.datasetIter.shuffle:
-            self.datasetIter.offset = np.random.randint(self.data_len)
-        logger.debug("{} entries".format(self.data_len))
-        logger.debug("Starting from the entry {}".format(self.datasetIter.offset))
+        assert source_index.shape[0] == target_index.shape[0]
+        data_len = source_index.shape[0]
 
-        counter = 0
-        while not self.exitFlag:
+        offset = 0
+        if diter.shuffle:
+            offset = np.random.randint(data_len)
+        logger.debug("{} entries".format(data_len))
+        logger.debug("Starting from the entry {}".format(offset))
+
+        while not diter.exit_flag:
             last_batch = False
-            while True:
-                source_data = []
-                target_data = []
+            source_sents = []
+            target_sents = []
+            while len(source_sents) < diter.batch_size:
+                if offset == data_len:
+                    if diter.use_infinite_loop:
+                        offset = 0
+                    else:
+                        last_batch = True
+                        break
 
-                for source_lang in self.source_langs:
-                    inc_offset = self.datasetIter.offset+self.datasetIter.batch_size
-                    npos = 0
-                    while not npos and inc_offset <= self.data_len:
-                        sents = np.asarray([np.cast[self.datasetIter.dtype](si) for si in
-                            [source_lang[0][source_lang[1][i]['pos']:(source_lang[1][i]['pos']+source_lang[1][i]['length'])]
-                                for i in range(self.datasetIter.offset, inc_offset)]])
-                        npos = len(sents)
-                        nzeros = self.datasetIter.batch_size - npos
-                        inc_offset += nzeros
+                slen, spos = source_index[offset]
+                tlen, tpos = target_index[offset]
+                offset += 1
 
-                    if self.datasetIter.order:
-                        sents = sents.T
-                    source_data.append(sents)
-
-                for target_lang in self.target_langs:
-                    inc_offset = self.datasetIter.offset+self.datasetIter.batch_size
-                    npos = 0
-                    while not npos and inc_offset <= self.data_len:
-                        sents = np.asarray([np.cast[self.datasetIter.dtype](si) for si in
-                            [target_lang[0][target_lang[1][i]['pos']:(target_lang[1][i]['pos']+target_lang[1][i]['length'])]
-                                for i in range(self.datasetIter.offset, inc_offset)] if
-                            len(si)>0])
-                        npos = len(sents)
-                        nzeros = self.datasetIter.batch_size - npos
-                        inc_offset += nzeros
-
-                    if self.datasetIter.order:
-                        sents = sents.T
-                    target_data.append(sents)
-
-                if inc_offset > self.data_len and self.datasetIter.use_infinite_loop:
-                    print "Restarting the dataset iterator."
-                    inc_offset = 0
-                    if self.datasetIter.shuffle:
-                        self.datasetIter.offset = np.random.randint(self.data_len)
-                elif inc_offset > self.data_len:
-                    last_batch = True
-
-                if len(source_data[0]) < 1 or len(target_data[0]) < 1:
-                    self.datasetIter.offset = inc_offset
-                    inc_offset = self.datasetIter.offset+self.datasetIter.batch_size
+                if slen > diter.max_len or tlen > diter.max_len:
                     continue
-                break
-            counter += 1
-            self.datasetIter.offset = inc_offset
+                source_sents.append(source_data[spos:spos + slen].astype(diter.dtype))
+                target_sents.append(target_data[tpos:tpos + tlen].astype(diter.dtype))
 
-            if source_data[0] == None:
-                continue
-
-            self.queue.put([source_data, target_data])
+            if len(source_sents):
+                diter.queue.put([source_sents, target_sents])
             if last_batch:
-                self.queue.put([None])
+                diter.queue.put([None])
                 return
 
-
-class TMIteratorPytables(object):
+class PytablesBitextIterator(object):
 
     def __init__(self,
                  batch_size,
-                 target_lfiles=None,
-                 source_lfiles=None,
-                 order = 0,
+                 target_file=None,
+                 source_file=None,
                  dtype="int64",
+                 table_name='/phrases',
+                 index_name='/indices',
+                 can_fit=False,
+                 queue_size=1000,
+                 cache_size=1000,
+                 shuffle=True,
                  use_infinite_loop=True,
-                 stop=-1,
-                 table_name = '/phrases',
-                 index_name = '/indices',
-                 freqs_name = '/counts',
-                 can_fit = False,
-                 queue_size = 1000,
-                 cache_size = 1000,
-                 freqs_sum = 16791878,
-                 shuffle = True):
+                 max_len=1000):
 
-        assert type(source_lfiles) == list, "Source language file should be a list."
+        args = locals()
+        args.pop("self")
+        self.__dict__.update(args)
 
-        if target_lfiles is not None:
-            assert type(target_lfiles) == list, "Target language file should be a list."
-            assert len(target_lfiles) == len(source_lfiles)
-
-        self.batch_size = batch_size
-        self.target_lfiles = target_lfiles
-        self.source_lfiles = source_lfiles
-        self.use_infinite_loop=use_infinite_loop
-        self.target_langs = []
-        self.source_langs = []
-        self.order = order
-        self.offset = 0
-        self.data_len = 0
-        self.stop = stop
-        self.can_fit = can_fit
-        self.dtype = dtype
-        self.shuffle = shuffle
-        self.table_name = table_name
-        self.index_name = index_name
-        self.freqs_name = freqs_name
-        self.freqs_sum = freqs_sum
-
-        self.exitFlag = False
-
-        if cache_size > 0:
-            self.cache = collections.deque(maxlen=cache_size)
-        else:
-            self.cache = None
+        self.exit_flag = False
 
         self.queue = Queue.Queue(maxsize=queue_size)
-        self.gather = TMIteratorPytablesGatherProcessing(self,
-                self.exitFlag, self.queue)
+        self.gather = PytablesBitextFetcher(self)
         self.gather.daemon = True
         self.gather.start()
 
@@ -328,31 +249,10 @@ class TMIteratorPytables(object):
     def __iter__(self):
         return self
 
-    def reset(self):
-        self.offset = 0
-
     def next(self):
-        while True:
-            try:
-                if self.cache != None:
-                    batch = self.queue.get_nowait()
-                    self.cache.append(batch)
-                else:
-                    batch = self.queue.get()
-            except Queue.Empty:
-                if self.cache != None:
-                    try:
-                        self.cache.rotate(-1)
-                        batch = self.cache[0]
-                    except IndexError:
-                        batch = None
-                else:
-                    batch = None
-            if batch:
-                break
-
-        if batch[0] == None:
-            raise StopIteration
+        batch = self.queue.get()
+        if not batch:
+            return None
         return batch[0], batch[1]
 
 class NNJMContextIterator(object):
