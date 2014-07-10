@@ -17,6 +17,7 @@ def parse_args():
     parser.add_argument("--window", type=int, default=100, help="Window width")
     parser.add_argument("--hours", action="store_true", default=False, help="Display time on X-axis")
     parser.add_argument("--legend", default=None, help="Legend to use in plot")
+    parser.add_argument("--y", default="cost2_p_expl", help="What to plot")
     parser.add_argument("timings", nargs="+", help="Path to timing files")
     parser.add_argument("plot_path", help="Path to save plot")
     return parser.parse_args()
@@ -25,7 +26,7 @@ def load_timings(path, args):
     logging.debug("Loading timings from {}".format(path))
     tm = numpy.load(path)
     num_steps = min(tm['step'], args.finish)
-    df = pandas.DataFrame({k : tm[k] for k in ['traincost', 'time_step']})[args.start:num_steps]
+    df = pandas.DataFrame({k : tm[k] for k in [args.y, 'time_step']})[args.start:num_steps]
     one_step = df['time_step'].median() / 3600.0
     logging.debug("Median time for one step is {} hours".format(one_step))
     if args.hours:
@@ -38,7 +39,7 @@ if __name__ == "__main__":
 
     datas = [load_timings(path, args) for path in args.timings]
     for data in datas:
-        pyplot.plot(data.index, data['traincost'])
+        pyplot.plot(data.index, data[args.y])
 
     pyplot.xlabel("hours" if args.hours else "iterations")
     pyplot.ylabel("log_2 likelihood")
