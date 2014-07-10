@@ -166,6 +166,15 @@ class RecursiveConvolutionalLayer(Layer):
                 self.rng),
             name='b_%s' %self.name)
         self.params += [self.b_hh]
+        # gaters
+        self.GW_hh = theano.shared(
+                numpy.float32(0.01 * self.rng.randn(self.n_hids, 3)),
+                name="GW_%s"%self.name)
+        self.params += [self.GW_hh]
+        self.GU_hh = theano.shared(
+                numpy.float32(0.01 * self.rng.randn(self.n_hids, 3)),
+                name="GU_%s"%self.name)
+        self.params += [self.GU_hh]
 
         self.params_grad_scale = [self.grad_scale for x in self.params]
         self.restricted_params = [x for x in self.params]
@@ -213,6 +222,8 @@ class RecursiveConvolutionalLayer(Layer):
             W_hh = self.W_hh
             U_hh = self.U_hh
             b_hh = self.b_hh
+        GW_hh = self.GW_hh
+        GU_hh = self.GU_hh
 
         if state_below.ndim == 3:
             b_hh = b_hh.dimshuffle('x','x',0)
@@ -228,9 +239,33 @@ class RecursiveConvolutionalLayer(Layer):
 
             prev_shifted = TT.zeros_like(prev_level)
             prev_shifted = TT.set_subtensor(prev_shifted[1:], prev_level[:-1])
+            lower_shifted = prev_shifted
+
             prev_shifted = TT.dot(prev_shifted, U_hh)
             prev_level = TT.dot(prev_level, W_hh)
-            act = self.activation(prev_level + prev_shifted + b_hh)
+            new_act = self.activation(prev_level + prev_shifted + b_hh)
+
+            gater = TT.dot(lower_shifted, GU_hh) + TT.dot(lower_level, GW_hh)
+            if prev_level.ndim == 3:
+                gater_shape = gater.shape
+                gater = gater.reshape((gater_shape[0] * gater_shape[1], 3))
+            gater = TT.nnet.softmax(gater)
+            if prev_level.ndim == 3:
+                gater = gater.reshape((gater_shape[0], gater_shape[1], 3))
+
+            if prev_level.ndim == 3:
+                gater_new = gater[:,:,0].dimshuffle(0,1,'x')
+                gater_left = gater[:,:,1].dimshuffle(0,1,'x')
+                gater_right = gater[:,:,2].dimshuffle(0,1,'x')
+            else:
+                gater_new = gater[:,0].dimshuffle(0,'x')
+                gater_left = gater[:,1].dimshuffle(0,'x')
+                gater_right = gater[:,2].dimshuffle(0,'x')
+
+            act = new_act * gater_new + \
+                    lower_shifted * gater_left + \
+                    lower_level * gater_right
+
             if mask:
                 if prev_level.ndim == 3:
                     mask = mask.dimshuffle('x',0,'x')
