@@ -124,8 +124,10 @@ class LM_Model(Model):
             num_words = TT.sum(self.cost_layer.mask)
         else:
             num_words = TT.cast(state_below.shape[0], 'float32')
-        scale = getattr(self.cost_layer, 'cost_layer', numpy.float32(1))
-        scale /= numpy.float32(numpy.log(2))
+        scale = getattr(self.cost_layer, 'cost_scale', numpy.float32(1))
+        if not scale:
+            scale = numpy.float32(1)
+        scale *= numpy.float32(numpy.log(2))
 
         grad_norm = TT.sqrt(sum(TT.sum(x**2)
             for x,p in zip(self.param_grads, self.params) if p not in
