@@ -38,8 +38,11 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     datas = [load_timings(path, args) for path in args.timings]
-    for data in datas:
+    for path, data in zip(args.timings, datas):
         pyplot.plot(data.index, data[args.y])
+        print "Average {} is {} after {} {} for {}".format(
+                args.y, data[args.y].iloc[-1],
+                data.index[-1], "hours" if args.hours else "iterations", path)
 
     pyplot.xlabel("hours" if args.hours else "iterations")
     pyplot.ylabel("log_2 likelihood")
