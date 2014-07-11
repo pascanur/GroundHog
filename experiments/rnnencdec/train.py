@@ -8,6 +8,8 @@ import pprint
 import numpy
 
 from groundhog.trainer.SGD_adadelta import SGD as SGD_adadelta
+from groundhog.trainer.SGD import SGD as SGD
+from groundhog.trainer.SGD_momentum import SGD as SGD_momentum
 from groundhog.mainLoop import MainLoop
 from experiments.rnnencdec import\
         RNNEncoderDecoder, prototype_state, get_batch_iterator
@@ -74,7 +76,7 @@ def main():
     logger.debug("Load data")
     train_data = get_batch_iterator(state, rng)
     logger.debug("Compile trainer")
-    algo = SGD_adadelta(lm_model, state, train_data)
+    algo = eval(state['algo'])(lm_model, state, train_data)
     logger.debug("Run training")
     main = MainLoop(train_data, None, None, lm_model, algo, state, None,
             reset=state['reset'],

@@ -120,7 +120,6 @@ class SGD(object):
 
 
         self.lr = numpy.float32(state['lr'])
-        assert len(model.params_scale) == len(model.params)
         new_params = [p - s*lr*g for s, p, g in zip(model.params_grad_scale, model.params, self.gs)]
         self.update_fn = theano.function(
             [lr], [], name='update_function',

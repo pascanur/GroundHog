@@ -100,11 +100,14 @@ def prototype_state():
     # TODO: what does it do?
     state['cutoff_rescale_length'] = 0.
 
+    # Choose optimization algo
+    state['algo'] = 'SGD_adadelta'
+
     # Adagrad setting
     state['adarho'] = 0.95
     state['adaeps'] = 1e-6
 
-    # Learning rate stuff, not used in Adagrad
+    # Learning rate stuff for SGD
     state['patience'] = 1
     state['lr'] = 1.
     state['minlr'] = 0
