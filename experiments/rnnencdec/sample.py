@@ -153,8 +153,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", help="State to use")
     parser.add_argument("--state-fn", help="Initialization function for state", default="prototype_state")
-    parser.add_argument("--beam-search", help="Do beam search instead of sampling",
-            action="store_true", default=False)
+    parser.add_argument("--beam-search", help="Beam size, turns on beam-search", type=int)
     parser.add_argument("--source", help="File of source sentences", default="")
     parser.add_argument("--trans", help="File to save translations in", default="")
     parser.add_argument("--normalize", help="Normalize log-prob with the word count", action="store_true", default=False)
@@ -197,7 +196,8 @@ def main():
         fsrc = open(args.source, 'r')
         ftrans = open(args.trans, 'w')
 
-        n_samples = int(raw_input('How many samples per sentence? '))
+        n_samples = args.beam_search
+        logging.debug("Beam size: {}".format(n_samples))
         for line in fsrc:
             seqin = line.strip()
             seq,parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
