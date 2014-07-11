@@ -250,7 +250,9 @@ class EncoderDecoderBase(object):
     def _create_embedding_layers(self, prefix):
         self.approx_embedder = MultiLayer(
             self.rng,
-            n_in=self.state['nins'],
+            n_in=self.state['n_sym_source']
+                if prefix == "enc"
+                else self.state['n_sym_target'],
             n_hids=[self.state['rank_n_approx']],
             activation=[self.state['rank_n_activ']],
             name='{}_approx_embdr'.format(prefix),
@@ -566,7 +568,7 @@ class Decoder(EncoderDecoderBase):
             self.output_layer = SoftmaxLayer(
                     self.rng,
                     self.state['dim'] / self.state['maxout_part'],
-                    self.state['nouts'],
+                    self.state['n_sym_target'],
                     sparsity=-1,
                     rank_n_approx=self.state['rank_n_approx'],
                     name='dec_deep_softmax',
@@ -576,7 +578,7 @@ class Decoder(EncoderDecoderBase):
             self.output_layer = SoftmaxLayer(
                     self.rng,
                     self.state['dim'],
-                    self.state['nouts'],
+                    self.state['n_sym_target'],
                     sparsity=-1,
                     rank_n_approx=0,
                     name='dec_softmax',

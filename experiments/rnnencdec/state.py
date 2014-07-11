@@ -27,10 +27,6 @@ def prototype_state():
     state['n_sym_target'] = state['null_sym_target'] + 1
     state['unk_sym_target'] = 1
 
-    # These are the number of input and output units
-    state['nouts'] = state['n_sym_target']
-    state['nins'] = state['n_sym_source']
-
     # This is for predicting the next target from the current one
     state['bigram'] = True
 
@@ -44,7 +40,6 @@ def prototype_state():
 
     # Dimensionality of hidden layers
     state['dim'] = 1000
-    state['dim_mlp'] = state['dim']
 
     # Size of hidden layers' stack in encoder and decoder
     state['encoder_stack'] = 1
@@ -147,7 +142,7 @@ def prototype_state():
     # Frequency of training error reports (in number of batches)
     state['trainFreq'] = 1
     # Frequency of running hooks
-    state['hookFreq'] = 10
+    state['hookFreq'] = 13
     # Validation frequency
     state['validFreq'] = 500
     # Model saving frequency (in minutes)
@@ -183,13 +178,9 @@ def prototype_sentence_state():
     state['n_sym_source'] = state['null_sym_source'] + 1
     state['n_sym_target'] = state['null_sym_target'] + 1
 
-    state['nouts'] = state['n_sym_target']
-    state['nins'] = state['n_sym_source']
-
     state['seqlen'] = 50
 
     state['dim'] = 2000
-    state['dim_mlp'] = state['dim']
     state['rank_n_approx'] = 620
     state['bs']  = 128
 

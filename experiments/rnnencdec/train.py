@@ -78,7 +78,9 @@ def main():
     logger.debug("Run training")
     main = MainLoop(train_data, None, None, lm_model, algo, state, None,
             reset=state['reset'],
-            hooks=[RandomSamplePrinter(state, lm_model, train_data)])
+            hooks=[RandomSamplePrinter(state, lm_model, train_data)]
+                if state['hookFreq'] >= 0
+                else None)
     if state['reload']:
         main.load()
     if state['loopIters'] > 0:
