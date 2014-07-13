@@ -175,6 +175,12 @@ class RecursiveConvolutionalLayer(Layer):
                 numpy.float32(0.01 * self.rng.randn(self.n_hids, 3)),
                 name="GU_%s"%self.name)
         self.params += [self.GU_hh]
+        self.Gb_hh = theano.shared(
+            self.bias_fn(3,
+                self.bias_scale,
+                self.rng),
+            name='Gb_%s' %self.name)
+        self.params += [self.Gb_hh]
 
         self.params_grad_scale = [self.grad_scale for x in self.params]
         self.restricted_params = [x for x in self.params]
@@ -224,6 +230,7 @@ class RecursiveConvolutionalLayer(Layer):
             b_hh = self.b_hh
         GW_hh = self.GW_hh
         GU_hh = self.GU_hh
+        Gb_hh = self.Gb_hh
 
         if state_below.ndim == 3:
             b_hh = b_hh.dimshuffle('x','x',0)
@@ -245,7 +252,8 @@ class RecursiveConvolutionalLayer(Layer):
             prev_level = TT.dot(prev_level, W_hh)
             new_act = self.activation(prev_level + prev_shifted + b_hh)
 
-            gater = TT.dot(lower_shifted, GU_hh) + TT.dot(lower_level, GW_hh)
+            gater = TT.dot(lower_shifted, GU_hh) + \
+                    TT.dot(lower_level, GW_hh) + Gb_hh
             if prev_level.ndim == 3:
                 gater_shape = gater.shape
                 gater = gater.reshape((gater_shape[0] * gater_shape[1], 3))
