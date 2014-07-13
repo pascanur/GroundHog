@@ -27,10 +27,6 @@ def prototype_state():
     state['n_sym_target'] = state['null_sym_target'] + 1
     state['unk_sym_target'] = 1
 
-    # These are the number of input and output units
-    state['nouts'] = state['n_sym_target']
-    state['nins'] = state['n_sym_source']
-
     # This is for predicting the next target from the current one
     state['bigram'] = True
 
@@ -44,7 +40,6 @@ def prototype_state():
 
     # Dimensionality of hidden layers
     state['dim'] = 1000
-    state['dim_mlp'] = state['dim']
 
     # Size of hidden layers' stack in encoder and decoder
     state['encoder_stack'] = 1
@@ -105,17 +100,22 @@ def prototype_state():
     # TODO: what does it do?
     state['cutoff_rescale_length'] = 0.
 
+    # Choose optimization algo
+    state['algo'] = 'SGD_adadelta'
+
     # Adagrad setting
     state['adarho'] = 0.95
     state['adaeps'] = 1e-6
 
-    # Learning rate stuff, not used in Adagrad
+    # Learning rate stuff for SGD
     state['patience'] = 1
     state['lr'] = 1.
     state['minlr'] = 0
 
     # Batch size
     state['bs']  = 64
+    state['sort_k_batches'] = 10
+
     # Maximum sequence length
     state['seqlen'] = 30
     state['use_infinite_loop'] = True
@@ -145,7 +145,7 @@ def prototype_state():
     # Frequency of training error reports (in number of batches)
     state['trainFreq'] = 1
     # Frequency of running hooks
-    state['hookFreq'] = 10
+    state['hookFreq'] = 13
     # Validation frequency
     state['validFreq'] = 500
     # Model saving frequency (in minutes)
@@ -181,16 +181,11 @@ def prototype_sentence_state():
     state['n_sym_source'] = state['null_sym_source'] + 1
     state['n_sym_target'] = state['null_sym_target'] + 1
 
-    state['nouts'] = state['n_sym_target']
-    state['nins'] = state['n_sym_source']
-
     state['seqlen'] = 50
 
     state['dim'] = 2000
-    state['dim_mlp'] = state['dim']
     state['rank_n_approx'] = 620
     state['bs']  = 128
-    state['sort_k_batches'] = 10
 
     state['prefix'] = 'sentence_'
 
