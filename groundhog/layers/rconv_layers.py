@@ -237,11 +237,7 @@ class RecursiveConvolutionalLayer(Layer):
         else:
             b_hh = b_hh.dimshuffle('x',0)
 
-        new_mask = TT.zeros_like(mask)
-        new_mask = TT.set_subtensor(new_mask[:-1], mask[1:])
-        mask = new_mask
-
-        def _level_fprop(mask, prev_level):
+        def _level_fprop(mask_t, prev_level):
             lower_level = prev_level
 
             prev_shifted = TT.zeros_like(prev_level)
@@ -274,25 +270,23 @@ class RecursiveConvolutionalLayer(Layer):
                     lower_shifted * gater_left + \
                     lower_level * gater_right
 
-            if mask:
-                if prev_level.ndim == 3:
-                    mask = mask.dimshuffle('x',0,'x')
-                else:
-                    mask = mask.dimshuffle('x', 0)
-                new_level = mask * act + (1. - mask) * lower_level
+            if prev_level.ndim == 3:
+                mask_t = mask_t.dimshuffle('x',0,'x')
             else:
-                new_level = act
+                mask_t = mask_t.dimshuffle('x', 0)
+            #new_level = mask_t * act + (1. - mask_t) * lower_level
+            new_level = TT.switch(mask_t, act, lower_level)
 
             return new_level
 
         rval, updates = theano.scan(_level_fprop,
-                        sequences = [mask],
+                        sequences = [mask[1:]],
                         outputs_info = [state_below],
                         name='layer_%s'%self.name,
                         profile=self.profile,
                         n_steps = nsteps-1)
 
-        seqlens = TT.cast(mask.sum(axis=0), 'int64')
+        seqlens = TT.cast(mask.sum(axis=0), 'int64')-1
         roots = rval[-1][seqlens]
 
         # Note that roots has only a single timestep
