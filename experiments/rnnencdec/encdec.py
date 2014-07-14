@@ -694,13 +694,13 @@ class Decoder(EncoderDecoderBase):
                             batch_size=y.shape[1] if y.ndim == 2 else 1,
                             nsteps=y.shape[0]))
                         ))
+
             def hid_hook(op, x):
                 if x.ndim == 3:
                     values = x.sum(2).flatten()
                 else:
                     values = x.sum()
                 logger.debug("Decoder hiddens: {}".format(values))
-
             hidden_layers[-1] = dbg_hook(hid_hook, hidden_layers[-1])
 
         # In hidden_layers we do no have the initial state, but we need it.
@@ -747,6 +747,7 @@ class Decoder(EncoderDecoderBase):
                                 readout.out.shape)
         for fun in self.output_nonlinearities:
             readout = fun(readout)
+
         def readout_hook(op, x):
             if x.ndim == 2:
                 values = x.sum(1).flatten()
