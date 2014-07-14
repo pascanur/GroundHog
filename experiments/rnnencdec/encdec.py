@@ -386,7 +386,6 @@ class Encoder(EncoderDecoderBase):
         # Shape in case of vector input:
         #   (seq_len, rank_n_approx)
         approx_embeddings = self.approx_embedder(x)
-        dbg_sum("Approximate embeddings:", approx_embeddings)
 
         # Low rank embeddings are projected to contribute
         # to input, reset and update signals.
@@ -398,9 +397,7 @@ class Encoder(EncoderDecoderBase):
             input_signals.append(self.input_embedders[level](approx_embeddings))
             update_signals.append(self.update_embedders[level](approx_embeddings))
             reset_signals.append(self.reset_embedders[level](approx_embeddings))
-            dbg_sum("Input embeddings:", input_signals[-1])
-            dbg_sum("Update embeddings:", update_signals[-1])
-            dbg_sum("Reset embeddings:", reset_signals[-1])
+
         def inp_hook(op, x):
             if x.ndim == 2:
                 values = x.sum(1).flatten()
@@ -456,7 +453,6 @@ class Encoder(EncoderDecoderBase):
                 LastState()(hidden_layers[level])))
         # I do not know a good starting value for sum
         c = self.repr_calculator(sum(contributions[1:], contributions[0]))
-        dbg_sum("c:", c)
         return c
 
 class Decoder(EncoderDecoderBase):
@@ -633,7 +629,7 @@ class Decoder(EncoderDecoderBase):
         #   (n_words, rank_n_approx),
         # Shape if mode != evaluation
         #   (n_samples, rank_n_approx)
-        approx_embeddings = dbg_sum("Approximate y embeddings:", self.approx_embedder(y))
+        approx_embeddings = self.approx_embedder(y)
 
         # Low rank embeddings are projected to contribute
         # to input, reset and update signals.
@@ -654,10 +650,6 @@ class Decoder(EncoderDecoderBase):
             input_signals[level] += self.decode_inputers[level](replicated_c)
             update_signals[level] += self.decode_updaters[level](replicated_c)
             reset_signals[level] += self.decode_reseters[level](replicated_c)
-
-            dbg_sum("Input signal:", input_signals[-1])
-            dbg_sum("Update signal:", update_signals[-1])
-            dbg_sum("Reset signal:", reset_signals[-1])
 
         # Hidden layers' initial states.
         # Shapes if mode == evaluation:
