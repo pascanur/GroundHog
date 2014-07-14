@@ -242,8 +242,10 @@ class Maxout(object):
             x = x.max(2)
         return x
 
-def _prefix(p, s):
-    return '%s_%s'%(p, s)
+def _prefix(state,p, s):
+    if '%s_%s'%(p,s) in state:
+        return state['%s_%s'%(p, s)]
+    return state[s]
 
 class EncoderDecoderBase(object):
 
@@ -275,13 +277,13 @@ class EncoderDecoderBase(object):
                 self.rng,
                 name='{}_input_embdr_{}'.format(prefix, level),
                 **embedder_kwargs)
-            if self.state[_prefix(prefix,'rec_gating')]:
+            if _prefix(self.state,prefix,'rec_gating'):
                 self.update_embedders[level] = MultiLayer(
                     self.rng,
                     learn_bias=False,
                     name='{}_update_embdr_{}'.format(prefix, level),
                     **embedder_kwargs)
-            if self.state[_prefix(prefix,'rec_reseting')]:
+            if _prefix(self.state,prefix,'rec_reseting'):
                 self.reset_embedders[level] =  MultiLayer(
                     self.rng,
                     learn_bias=False,
@@ -302,11 +304,11 @@ class EncoderDecoderBase(object):
             self.inputers[level] = MultiLayer(self.rng,
                     name="{}_inputer_{}".format(prefix, level),
                     **inter_level_kwargs)
-            if self.state[_prefix(prefix,'rec_reseting')]:
+            if _prefix(self.state,prefix,'rec_reseting'):
                 self.reseters[level] = MultiLayer(self.rng,
                     name="{}_reseter_{}".format(prefix, level),
                     **inter_level_kwargs)
-            if self.state[_prefix(prefix,'rec_gating')]:
+            if _prefix(self.state,prefix,'rec_gating'):
                 self.updaters[level] = MultiLayer(self.rng,
                     name="{}_updater_{}".format(prefix, level),
                     **inter_level_kwargs)
@@ -314,19 +316,19 @@ class EncoderDecoderBase(object):
     def _create_transition_layers(self, prefix):
         self.transitions = []
         for level in range(self.num_levels):
-            self.transitions.append(eval(self.state[_prefix(prefix,'rec_layer')])(
+            self.transitions.append(eval(_prefix(self.state,prefix,'rec_layer'))(
                     self.rng,
                     n_hids=self.state['dim'],
-                    activation=self.state['activ'],
+                    activation=_prefix(self.state,prefix,'activ'),
                     bias_scale=self.state['bias'],
-                    scale=self.state['rec_weight_scale'],
+                    scale=_prefix(self.state,prefix,'rec_weight_scale'),
                     init_fn=self.state['rec_weight_init_fn'],
                     weight_noise=self.state['weight_noise_rec'],
                     dropout=self.state['dropout_rec'],
-                    gating=self.state[_prefix(prefix,'rec_gating')],
-                    gater_activation=self.state[_prefix(prefix,'rec_gater')],
-                    reseting=self.state[_prefix(prefix,'rec_reseting')],
-                    reseter_activation=self.state[_prefix(prefix,'rec_reseter')],
+                    gating=_prefix(self.state,prefix,'rec_gating'),
+                    gater_activation=_prefix(self.state,prefix,'rec_gater'),
+                    reseting=_prefix(self.state,prefix,'rec_reseting'),
+                    reseter_activation=_prefix(self.state,prefix,'rec_reseter'),
                     profile=self.state['profile'],
                     name='{}_transition_{}'.format(prefix, level)))
 
@@ -494,7 +496,7 @@ class Decoder(EncoderDecoderBase):
                     self.rng,
                     n_in=self.state['dim'],
                     n_hids=[self.state['dim']],
-                    activation=[self.state['activ']],
+                    activation=[_prefix(self.state,'dec','activ')],
                     bias_scale=[self.state['bias']],
                     name='dec_initializer_%d'%level,
                     **self.default_kwargs)
@@ -514,13 +516,13 @@ class Decoder(EncoderDecoderBase):
                 name='dec_dec_inputter_{}'.format(level),
                 learn_bias=False,
                 **decoding_kwargs)
-            if self.state[_prefix('dec','rec_gating')]:
+            if _prefix(self.state,'dec','rec_gating'):
                 self.decode_updaters[level] = MultiLayer(
                     self.rng,
                     name='dec_dec_updater_{}'.format(level),
                     learn_bias=False,
                     **decoding_kwargs)
-            if self.state[_prefix('dec','rec_reseting')]:
+            if _prefix(self.state,'dec','rec_reseting'):
                 self.decode_reseters[level] = MultiLayer(
                     self.rng,
                     name='dec_dec_reseter_{}'.format(level),
