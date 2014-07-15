@@ -149,7 +149,7 @@ def prototype_state():
     # Validation frequency
     state['validFreq'] = 500
     # Model saving frequency (in minutes)
-    state['saveFreq'] = 1
+    state['saveFreq'] = 10
 
     # Turns on profiling of training phase
     state['profile'] = 0
