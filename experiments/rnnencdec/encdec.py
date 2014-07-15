@@ -363,7 +363,9 @@ class Encoder(EncoderDecoderBase):
                 activation=['lambda x: x'],
                 name="enc_repr_contrib_{}".format(level),
                 **self.default_kwargs)
-        self.repr_calculator = UnaryOp(activation=eval(self.state['unary_activ']), name="enc_repr_calc")
+        self.repr_calculator = UnaryOp(
+                activation=eval(self.state['unary_activ']),
+                name="enc_repr_calc")
 
     def build_encoder(self, x, x_mask, use_noise):
         """Create the computational graph of the RNN Encoder
@@ -405,7 +407,6 @@ class Encoder(EncoderDecoderBase):
                 values = x.sum()
             logger.debug("Input signal: {}".format(values))
         input_signals[-1] = dbg_hook(inp_hook, input_signals[-1])
-
 
         # Hidden layers.
         # Shape in case of matrix input: (max_seq_len, batch_size, dim)
