@@ -442,8 +442,8 @@ class Encoder(EncoderDecoderBase):
         #   (batch_size, dim)
         # Return value shape in case of vector input:
         #   (dim,)
-        if self.num_levels == 1:
-            return LastState()(hidden_layers[0])
+        if self.num_levels == 1 or self.state['take_top']:
+            return LastState()(hidden_layers[-1])
 
         # If we have a stack of RNN, then their last hidden states
         # are combined with a maxout layer.

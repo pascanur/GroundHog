@@ -64,6 +64,9 @@ def prototype_state():
     state['dec_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
     state['dec_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
 
+    # Representation from hidden layer
+    state['take_top'] = True
+
     # Hidden-to-hidden activation function
     state['activ'] = 'lambda x: TT.tanh(x)'
 
