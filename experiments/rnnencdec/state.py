@@ -188,7 +188,7 @@ def prototype_sentence_state():
 
     state['dim'] = 2000
     state['rank_n_approx'] = 620
-    state['bs']  = 128
+    state['bs']  = 80
 
     state['prefix'] = 'sentence_'
 
