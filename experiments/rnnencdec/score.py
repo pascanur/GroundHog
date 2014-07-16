@@ -5,7 +5,6 @@ import cPickle
 import traceback
 import logging
 import time
-import math
 
 import numpy
 
@@ -25,6 +24,7 @@ def parse_args():
     parser.add_argument("--scores", default="scores.txt", help="Save scores to")
     parser.add_argument("--print-probs", action="store_true", default=False,
         help="Print probabilities instead of log-likelihoods")
+    parser.add_argument("--mode", default="interact", help="What to do")
     parser.add_argument("model_path", help="Path to the model")
     parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
     return parser.parse_args()
@@ -46,7 +46,9 @@ def main():
     lm_model = enc_dec.create_lm_model()
     lm_model.load(args.model_path)
 
-    if args.src and args.trg:
+    if args.mode == "hdf5":
+        assert args.src and args.trg
+
         state['source'] = [args.src]
         state['target'] = [args.trg]
         state['shuffle'] = False
@@ -83,7 +85,7 @@ def main():
         logger.info("Done")
         score_file.flush()
         score_file.close()
-    else:
+    elif args.mode == "interact":
         scorer = enc_dec.create_scorer()
         indx_word_src = cPickle.load(open(state['word_indx'],'rb'))
         indx_word_trgt = cPickle.load(open(state['word_indx_trgt'], 'rb'))
@@ -100,7 +102,24 @@ def main():
                 print "Probs: {}, cost: {}".format(probs, -numpy.sum(numpy.log(probs)))
             except Exception:
                 traceback.print_exc()
-
+    elif args.mode == "txt":
+        assert args.src and args.trg
+        scorer = enc_dec.create_scorer()
+        indx_word_src = cPickle.load(open(state['word_indx'],'rb'))
+        indx_word_trgt = cPickle.load(open(state['word_indx_trgt'], 'rb'))
+        src_file = open(args.src, "r")
+        trg_file = open(args.trg, "r")
+        compute_probs = enc_dec.create_probs_computer()
+        try:
+            while True:
+                src_line = next(src_file).strip()
+                trgt_line = next(trg_file).strip()
+                src_seq = parse_input(state, indx_word_src, src_line, raise_unk=True)
+                trgt_seq = parse_input(state, indx_word_trgt, trgt_line, raise_unk=True)
+                probs = compute_probs(src_seq, trgt_seq)
+                print -numpy.sum(numpy.log(probs))
+        except StopIteration:
+            pass
 
 if __name__ == "__main__":
     main()
