@@ -24,7 +24,8 @@ def parse_args():
     parser.add_argument("--scores", default="scores.txt", help="Save scores to")
     parser.add_argument("--print-probs", action="store_true", default=False,
         help="Print probabilities instead of log-likelihoods")
-    parser.add_argument("--mode", default="interact", help="What to do")
+    parser.add_argument("--mode", default="interact",
+            help="Input format, one of 'hdf5', 'txt', 'interact'")
     parser.add_argument("model_path", help="Path to the model")
     parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
     return parser.parse_args()
@@ -120,6 +121,8 @@ def main():
                 print -numpy.sum(numpy.log(probs))
         except StopIteration:
             pass
+    else:
+        raise Exception("Unknown mode {}".format(args.mode))
 
 if __name__ == "__main__":
     main()
