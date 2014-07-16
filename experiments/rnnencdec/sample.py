@@ -147,7 +147,7 @@ def sample(lm_model, seq, n_samples,
     else:
         raise Exception("I don't know what to do")
 
-    return sentences, costs
+    return sentences, costs, trans
 
 def parse_args():
     parser = argparse.ArgumentParser()

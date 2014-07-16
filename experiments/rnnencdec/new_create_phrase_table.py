@@ -44,18 +44,6 @@ def chunks(l, n):
         yield l[i:i+n]
 
 
-class Sentence(object):
-    def __init__(string, dictionary, state, indx_word):  
-        self.string_rep = string 
-        self.state = state 
-        self.indx_word = indx_word
-        self.list_rep = string.strip().lower().split() 
-        self.dicti = dictionary
-        self.binarized_rep = parse_input(state, indx_word, string) 
-        self.n_word = len(self.list_rep)
-        #self.phrases =  
-
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", help="State to use")
@@ -64,7 +52,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def comp_scores(source_sentence, target_sentence, model, max_phrase_length, batch_size, without_segmentation=False):
+def comp_scores(source_sentence, target_sentence, model, max_phrase_length, batch_size, without_segmentation=False, branch_and_bound=False):
 
     #Setting up comp_score function
     logger.debug("setting up comp_score function")
@@ -85,42 +73,71 @@ def comp_scores(source_sentence, target_sentence, model, max_phrase_length, batc
     n_s = len(src_seq)
     n_t = len(trgt_seq)
    
-    #Create sorted phrase lists
-    tiled_target_phrase_list = []
-    tiled_source_phrase_list = []
-    index_order_list = []
-    for i in xrange(n_t):
-        for j in numpy.arange(i, min(i+max_phrase_length, n_t)):
-            for k in xrange(n_s):
-                for l in numpy.arange(k, min(k+max_phrase_length, n_s)):
-                    index_order_list.append([i, j, k, l])
+    #Classical method
+    if not branch_and_bound:
+        #Create sorted phrase lists
+        tiled_target_phrase_list = []
+        tiled_source_phrase_list = []
+        index_order_list = []
+        for i in xrange(n_t):
+            for j in numpy.arange(i, min(i+max_phrase_length, n_t)):
+                for k in xrange(n_s):
+                    for l in numpy.arange(k, min(k+max_phrase_length, n_s)):
+                        index_order_list.append([i, j, k, l])
+   
+        logger.debug("sorting list")
+        index_order_list.sort(key=lambda (i, j, k, l): (j - i, l - k))
+        
+        logger.debug("creating phrase lists")
+        for i, j, k, l in index_order_list:
+            tiled_target_phrase_list.append(trgt_seq[i:j+1])
+            tiled_source_phrase_list.append(src_seq[k:l+1])
+    
+    #Branch-and-bound-like method
+    if branch_and_bound:
+       import time
+       t2 = time.time()
+       onegram_score, onegram_segment, onegram_score_dict = comp_scores(source_sentence, target_sentence, model, 1, batch_size, False, False) 
+       t3 = time.time()
+       print >>sys.stderr, "Time to compute scores for 1gram", t3 - t2
 
-    logger.debug("sorting list")
-    index_order_list.sort(key=lambda (i, j, k, l): (j - i, l - k))
-    
-    logger.debug("creating phrase lists")
-    for i, j, k, l in index_order_list:
-        tiled_target_phrase_list.append(trgt_seq[i:j+1])
-        tiled_source_phrase_list.append(src_seq[k:l+1])
-    
-    score_index = numpy.asarray(index_order_list)
-  
+       tiled_target_phrase_list = []
+       tiled_source_phrase_list = []
+       index_order_list = []
+
+       for i in xrange(n_t):
+           for j in xrange(i, min(i+max_phrase_length, n_t)):
+              temp_score_dict = {}
+              for k in xrange(n_s):
+                  for l in xrange(k, min(k+max_phrase_length, n_s)):
+                      temp_score_dict[k, l] = sum([onegram_score_dict[q, q][r, r] for q, r in izip(numpy.arange(i,j+1), numpy.arange(k, l+1))])
+              ########RIGHT NOW THIS NUMBER IS HARDCODED
+              selected_sentences = sorted(temp_score_dict.iteritems(), key=operator.itemgetter(1))[:len(temp_score_dict) / 2:-1]      
+              for sen_score in selected_sentences:
+                  k, l = sen_score[0]
+                  sen_index = [i, j, k, l]
+                  index_order_list.append(sen_index)
+
+       for i, j, k, l in index_order_list:
+           tiled_target_phrase_list.append(trgt_seq[i:j+1])
+           tiled_source_phrase_list.append(src_seq[k:l+1])
+
     #Compute nested score dictionary
     logger.debug("computing nested score dictionary")
     print >>sys.stderr, "scoring ", len(index_order_list), " phrases"
     score_dict = defaultdict(dict)
 
-    for batch_idx in xrange(0, len(score_index), batch_size):
-        source_phrase, source_mask, target_phrase, target_mask = create_padded_batch(state, 
-                                       [numpy.asarray([tiled_source_phrase_list[i] for i in xrange(batch_idx, min(batch_idx + batch_size, len(index_order_list)))])],
-                                       [numpy.asarray([tiled_target_phrase_list[i] for i in xrange(batch_idx, min(batch_idx + batch_size, len(index_order_list)))])])
-        print "len(source_phrase), print len(target_phrase)", len(source_phrase), len(target_phrase)
-        logger.debug("scoring batch number {}".format(batch_idx)) 
+    for batch_idx in xrange(0, len(index_order_list), batch_size):
+        source_phrase, source_mask, target_phrase, target_mask = create_padded_batch(state,
+            [numpy.asarray([tiled_source_phrase_list[i] for i in xrange(batch_idx, min(batch_idx + batch_size, len(index_order_list)))])],
+            [numpy.asarray([tiled_target_phrase_list[i] for i in xrange(batch_idx, min(batch_idx + batch_size, len(index_order_list)))])])
+        #print "len(source_phrase), print len(target_phrase)", len(source_phrase), len(target_phrase)
+        #logger.debug("scoring batch number {}".format(batch_idx)) 
         can_scores =  - scorer(source_phrase, target_phrase, source_mask, target_mask)[0]
 
         for idx_batch, idx_pair in enumerate(numpy.arange(batch_idx, 
-                                                          min(batch_idx+batch_size,len(score_index)))):
-            i, j, k, l = score_index[idx_pair]
+                                                          min(batch_idx+batch_size,len(index_order_list)))):
+            i, j, k, l = index_order_list[idx_pair]
             score_dict[i, j][k, l] = can_scores[idx_batch]
 
     #Compute best scores
@@ -141,14 +158,14 @@ def comp_scores(source_sentence, target_sentence, model, max_phrase_length, batc
             k, l = v 
             print " ".join(S[k:l+1]), " ||| ", " ".join(T[i:j+1]), " ||| ", scores[i, j]
 
-    return scores, segment
+    return scores, segment, score_dict
 
 
 def find_align(source, target, model, max_phrase_length, batch_size):
     [lm_model, enc_dec, indx_word_src, indx_word_trgt, state] = model
     split_source_sentence = source.strip().split()
     split_target_sentence = target.strip().split()
-    scores, phrases = comp_scores(source, target, model, max_phrase_length, batch_size)
+    scores, phrases, _ = comp_scores(source, target, model, max_phrase_length, batch_size)
 
     logger.debug("starting segmentation")
 
@@ -195,9 +212,10 @@ def find_align(source, target, model, max_phrase_length, batch_size):
 
     return phrase_table
 
+
 def main_with_segmentation():
     model = get_model()
-    max_text_len = 1000
+    max_text_len = 100
     batch_size = 1024
     max_phrase_length = 5
     s_text = []
@@ -218,17 +236,17 @@ def main_with_segmentation():
     t0 = time.time()
     counter = 0
     for source, target in izip(s_text, t_text):
-        phrase_table.append(find_align(source, target, model, max_phrase_length, batch_size))
-        counter += 1
-        t1 = time.time()
-        print >>sys.stderr, "total time : ", t1 - t0
-        print >>sys.stderr, "total sentences processed : ", counter
-        print >>sys.stderr, "current size of phrase table : ", len(phrase_table)
+        if len(source.strip().split()) + len(target.strip().split()) <= 80:
+            phrase_table.append(find_align(source, target, model, max_phrase_length, batch_size))
+            counter += 1
+            t1 = time.time()
+            print >>sys.stderr, "total time : ", t1 - t0
+            print >>sys.stderr, "total sentences processed : ", counter
 
 
 def main_without_segmentation():
     model = get_model()
-    max_text_len = 1000
+    max_text_len = 100
     batch_size = 1024
     max_phrase_length = 5
     s_text = []
@@ -245,10 +263,16 @@ def main_without_segmentation():
             if i>= max_text_len:
                 break
             t_text.append(line)
+    import time
+    t0 = time.time()
+    counter = 0
     for source, target in izip(s_text, t_text):
         if len(source.strip().split()) + len(target.strip().split()) <= 80:
             phrase_table.append(comp_scores(source, target, model, max_phrase_length, batch_size, True))
-
+            counter += 1
+            t1 = time.time()
+            print >>sys.stderr, "total time : ", t1 - t0
+            print >>sys.stderr, "total sentences processed : ", counter   
 
 if __name__ == "__main__":
     main_with_segmentation()
