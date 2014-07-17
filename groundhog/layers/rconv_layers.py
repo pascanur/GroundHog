@@ -287,7 +287,20 @@ class RecursiveConvolutionalLayer(Layer):
                         n_steps = nsteps-1)
 
         seqlens = TT.cast(mask.sum(axis=0), 'int64')-1
-        roots = rval[-1][seqlens]
+        roots = rval[-1]
+
+        if state_below.ndim == 3:
+            def _grab_root(seqlen,one_sample,prev_sample):
+                return one_sample[seqlen]
+
+            roots, updates = theano.scan(_grab_root,
+                    sequences = [seqlens, roots.dimshuffle(1,0,2)],
+                    outputs_info = [TT.alloc(0., self.n_hids)],
+                    name='grab_root_%s'%self.name,
+                    profile=self.profile)
+            roots = roots.dimshuffle('x', 0, 1)
+        else:
+            roots = roots[seqlens] # there should be only one, so it's fine.
 
         # Note that roots has only a single timestep
         new_h = roots
