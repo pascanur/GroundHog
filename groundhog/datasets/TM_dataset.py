@@ -200,8 +200,8 @@ class PytablesBitextFetcher(threading.Thread):
                         last_batch = True
                         break
 
-                slen, spos = source_index[offset]
-                tlen, tpos = target_index[offset]
+                slen, spos = source_index[offset]['length'], source_index[offset]['pos']
+                tlen, tpos = target_index[offset]['length'], target_index[offset]['pos']
                 offset += 1
 
                 if slen > diter.max_len or tlen > diter.max_len:
