@@ -83,6 +83,9 @@ def softmax(x):
         e = TT.exp(x)
         return e/ TT.sum(e)
 
+def sample_zeros(sizeX, sizeY, sparsity, scale, rng):
+    return numpy.zeros((sizeX, sizeY), dtype=theano.config.floatX)
+
 def sample_weights(sizeX, sizeY, sparsity, scale, rng):
     """
     Initialization that fixes the largest singular value.

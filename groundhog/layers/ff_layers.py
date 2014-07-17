@@ -20,7 +20,8 @@ from groundhog import utils
 from groundhog.utils import sample_weights, \
             sample_weights_classic,\
             init_bias, \
-            constant_shape
+            constant_shape, \
+            sample_zeros
 from basic import Layer
 
 
