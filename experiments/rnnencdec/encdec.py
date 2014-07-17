@@ -881,14 +881,16 @@ class RNNEncoderDecoder(object):
         if not hasattr(self, "repr_fn"):
             self.repr_fn = theano.function(
                     inputs=[self.sampling_x],
-                    outputs=[self.sampling_c])
+                    outputs=[self.sampling_c],
+                    name="repr_fn")
         return self.repr_fn
 
     def create_initializers(self):
         if not hasattr(self, "init_fn"):
             self.init_fn = theano.function(
                     inputs=[self.sampling_c],
-                    outputs=self.decoder.build_initializers(self.sampling_c))
+                    outputs=self.decoder.build_initializers(self.sampling_c),
+                    name="init_fn")
         return self.init_fn
 
     def create_sampler(self, many_samples=False):
@@ -911,7 +913,8 @@ class RNNEncoderDecoder(object):
             logger.debug("Compile scorer")
             self.score_fn = theano.function(
                     inputs=self.inputs,
-                    outputs=[-self.predictions.cost_per_sample])
+                    outputs=[-self.predictions.cost_per_sample],
+                    name="score_fn")
         if batch:
             return self.score_fn
         def scorer(x, y):
@@ -925,7 +928,8 @@ class RNNEncoderDecoder(object):
         if not hasattr(self, 'next_probs_fn'):
             self.next_probs_fn = theano.function(
                     inputs=[self.c, self.gen_y] + self.current_states,
-                    outputs=[self.decoder.build_next_probs_predictor(self.c, self.gen_y, self.current_states)])
+                    outputs=[self.decoder.build_next_probs_predictor(self.c, self.gen_y, self.current_states)],
+                    name="next_probs_fn")
         return self.next_probs_fn
 
     def create_next_states_computer(self):
@@ -933,7 +937,8 @@ class RNNEncoderDecoder(object):
             self.next_states_fn = theano.function(
                     inputs=[self.c, self.gen_y] + self.current_states,
                     outputs=self.decoder.build_next_states_computer(
-                        self.c, self.gen_y, self.current_states))
+                        self.c, self.gen_y, self.current_states),
+                    name="next_states_fn")
         return self.next_states_fn
 
 
@@ -942,7 +947,8 @@ class RNNEncoderDecoder(object):
             logger.debug("Compile probs computer")
             self.probs_fn = theano.function(
                     inputs=self.inputs,
-                    outputs=[self.predictions.word_probs])
+                    outputs=[self.predictions.word_probs],
+                    name="probs_fn")
         def probs_computer(x, y):
             x_mask = numpy.ones(x.shape[0], dtype="float32")
             y_mask = numpy.ones(y.shape[0], dtype="float32")
