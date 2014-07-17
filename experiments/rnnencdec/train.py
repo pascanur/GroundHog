@@ -52,7 +52,8 @@ class RandomSamplePrinter(object):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", help="State to use")
-    parser.add_argument("--proto", help="Prototype state to use for state", default="prototype_state")
+    parser.add_argument("--proto",  default="prototype_state",
+        help="Prototype state to use for state")
     parser.add_argument("changes",  nargs="*", help="Changes to state", default="")
     return parser.parse_args()
 
