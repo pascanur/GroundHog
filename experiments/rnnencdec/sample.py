@@ -197,6 +197,7 @@ def main():
         ftrans = open(args.trans, 'w')
 
         n_samples = args.beam_search
+        total_cost = 0.0
         logging.debug("Beam size: {}".format(n_samples))
         for line in fsrc:
             seqin = line.strip()
@@ -204,8 +205,12 @@ def main():
             print "Parsed Input:", parsed_in
             trans, costs = sample(lm_model, seq, n_samples, sampler=sampler,
                     beam_search=beam_search, normalize=args.normalize)
-            print >>ftrans, trans[numpy.argmin(costs)]
-            print "Translation:", trans[numpy.argmin(costs)]
+            best = numpy.argmin(costs)
+            print >>ftrans, trans[best]
+            print "Translation:", trans[best]
+            total_cost += costs[best]
+        print "Total cost of the translations: {}".format(total_cost)
+
 
         fsrc.close()
         ftrans.close()

@@ -365,7 +365,9 @@ class Encoder(EncoderDecoderBase):
                 activation=['lambda x: x'],
                 name="enc_repr_contrib_{}".format(level),
                 **self.default_kwargs)
-        self.repr_calculator = UnaryOp(activation=eval(self.state['unary_activ']), name="enc_repr_calc")
+        self.repr_calculator = UnaryOp(
+                activation=eval(self.state['unary_activ']),
+                name="enc_repr_calc")
 
     def build_encoder(self, x, x_mask, use_noise):
         """Create the computational graph of the RNN Encoder
@@ -388,7 +390,6 @@ class Encoder(EncoderDecoderBase):
         # Shape in case of vector input:
         #   (seq_len, rank_n_approx)
         approx_embeddings = self.approx_embedder(x)
-        dbg_sum("Approximate embeddings:", approx_embeddings)
 
         # Low rank embeddings are projected to contribute
         # to input, reset and update signals.
@@ -400,9 +401,7 @@ class Encoder(EncoderDecoderBase):
             input_signals.append(self.input_embedders[level](approx_embeddings))
             update_signals.append(self.update_embedders[level](approx_embeddings))
             reset_signals.append(self.reset_embedders[level](approx_embeddings))
-            dbg_sum("Input embeddings:", input_signals[-1])
-            dbg_sum("Update embeddings:", update_signals[-1])
-            dbg_sum("Reset embeddings:", reset_signals[-1])
+
         def inp_hook(op, x):
             if x.ndim == 2:
                 values = x.sum(1).flatten()
@@ -410,7 +409,6 @@ class Encoder(EncoderDecoderBase):
                 values = x.sum()
             logger.debug("Input signal: {}".format(values))
         input_signals[-1] = dbg_hook(inp_hook, input_signals[-1])
-
 
         # Hidden layers.
         # Shape in case of matrix input: (max_seq_len, batch_size, dim)
@@ -446,8 +444,8 @@ class Encoder(EncoderDecoderBase):
         #   (batch_size, dim)
         # Return value shape in case of vector input:
         #   (dim,)
-        if self.num_levels == 1:
-            return LastState()(hidden_layers[0])
+        if self.num_levels == 1 or self.state['take_top']:
+            return LastState()(hidden_layers[-1])
 
         # If we have a stack of RNN, then their last hidden states
         # are combined with a maxout layer.
@@ -458,7 +456,6 @@ class Encoder(EncoderDecoderBase):
                 LastState()(hidden_layers[level])))
         # I do not know a good starting value for sum
         c = self.repr_calculator(sum(contributions[1:], contributions[0]))
-        dbg_sum("c:", c)
         return c
 
 class Decoder(EncoderDecoderBase):
@@ -635,7 +632,7 @@ class Decoder(EncoderDecoderBase):
         #   (n_words, rank_n_approx),
         # Shape if mode != evaluation
         #   (n_samples, rank_n_approx)
-        approx_embeddings = dbg_sum("Approximate y embeddings:", self.approx_embedder(y))
+        approx_embeddings = self.approx_embedder(y)
 
         # Low rank embeddings are projected to contribute
         # to input, reset and update signals.
@@ -656,10 +653,6 @@ class Decoder(EncoderDecoderBase):
             input_signals[level] += self.decode_inputers[level](replicated_c)
             update_signals[level] += self.decode_updaters[level](replicated_c)
             reset_signals[level] += self.decode_reseters[level](replicated_c)
-
-            dbg_sum("Input signal:", input_signals[-1])
-            dbg_sum("Update signal:", update_signals[-1])
-            dbg_sum("Reset signal:", reset_signals[-1])
 
         # Hidden layers' initial states.
         # Shapes if mode == evaluation:
@@ -696,13 +689,13 @@ class Decoder(EncoderDecoderBase):
                             batch_size=y.shape[1] if y.ndim == 2 else 1,
                             nsteps=y.shape[0]))
                         ))
+
             def hid_hook(op, x):
                 if x.ndim == 3:
                     values = x.sum(2).flatten()
                 else:
                     values = x.sum()
                 logger.debug("Decoder hiddens: {}".format(values))
-
             hidden_layers[-1] = dbg_hook(hid_hook, hidden_layers[-1])
 
         # In hidden_layers we do no have the initial state, but we need it.
@@ -749,6 +742,7 @@ class Decoder(EncoderDecoderBase):
                                 readout.out.shape)
         for fun in self.output_nonlinearities:
             readout = fun(readout)
+
         def readout_hook(op, x):
             if x.ndim == 2:
                 values = x.sum(1).flatten()

@@ -64,6 +64,9 @@ def prototype_state():
     state['dec_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
     state['dec_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
 
+    # Representation from hidden layer
+    state['take_top'] = True
+
     # Hidden-to-hidden activation function
     state['activ'] = 'lambda x: TT.tanh(x)'
 
@@ -149,7 +152,7 @@ def prototype_state():
     # Validation frequency
     state['validFreq'] = 500
     # Model saving frequency (in minutes)
-    state['saveFreq'] = 1
+    state['saveFreq'] = 10
 
     # Turns on profiling of training phase
     state['profile'] = 0
@@ -185,7 +188,7 @@ def prototype_sentence_state():
 
     state['dim'] = 2000
     state['rank_n_approx'] = 620
-    state['bs']  = 128
+    state['bs']  = 80
 
     state['prefix'] = 'sentence_'
 

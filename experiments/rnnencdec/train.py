@@ -53,7 +53,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", help="State to use")
     parser.add_argument("--proto", help="Prototype state to use for state", default="prototype_state")
-    parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
+    parser.add_argument("changes",  nargs="*", help="Changes to state", default="")
     return parser.parse_args()
 
 def main():
@@ -63,7 +63,8 @@ def main():
     if args.state:
         with open(args.state) as src:
             state.update(cPickle.load(src))
-    state.update(eval("dict({})".format(args.changes)))
+    for change in args.changes:
+        state.update(eval("dict({})".format(change)))
 
     logging.basicConfig(level=getattr(logging, state['level']), format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
     logger.debug("State:\n{}".format(pprint.pformat(state)))
