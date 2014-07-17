@@ -178,7 +178,9 @@ class Container(object):
                             .format(p.get_value().shape, vals[p.name].shape, p.name))
                 p.set_value(vals[p.name])
             else:
-                raise Exception("No parameter {} given".format(p.name))
+                # FIXME: do not stop loading even if there's a parameter value missing
+                #raise Exception("No parameter {} given".format(p.name))
+                print "No parameter {} given: default initialization used"
         unknown = {p.name for p in self.params} - set(vals.keys())
         if len(unknown):
             raise Exception("Unknown parameters {} given".format(unknown))

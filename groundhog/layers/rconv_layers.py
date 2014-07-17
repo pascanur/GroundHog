@@ -175,6 +175,12 @@ class RecursiveConvolutionalLayer(Layer):
                 numpy.float32(0.01 * self.rng.randn(self.n_hids, 3)),
                 name="GU_%s"%self.name)
         self.params += [self.GU_hh]
+        self.Gb_hh = theano.shared(
+            self.bias_fn(3,
+                self.bias_scale,
+                self.rng),
+            name='Gb_%s' %self.name)
+        self.params += [self.Gb_hh]
 
         self.params_grad_scale = [self.grad_scale for x in self.params]
         self.restricted_params = [x for x in self.params]
@@ -224,17 +230,14 @@ class RecursiveConvolutionalLayer(Layer):
             b_hh = self.b_hh
         GW_hh = self.GW_hh
         GU_hh = self.GU_hh
+        Gb_hh = self.Gb_hh
 
         if state_below.ndim == 3:
             b_hh = b_hh.dimshuffle('x','x',0)
         else:
             b_hh = b_hh.dimshuffle('x',0)
 
-        new_mask = TT.zeros_like(mask)
-        new_mask = TT.set_subtensor(new_mask[:-1], mask[1:])
-        mask = new_mask
-
-        def _level_fprop(mask, prev_level):
+        def _level_fprop(mask_t, prev_level):
             lower_level = prev_level
 
             prev_shifted = TT.zeros_like(prev_level)
@@ -245,7 +248,8 @@ class RecursiveConvolutionalLayer(Layer):
             prev_level = TT.dot(prev_level, W_hh)
             new_act = self.activation(prev_level + prev_shifted + b_hh)
 
-            gater = TT.dot(lower_shifted, GU_hh) + TT.dot(lower_level, GW_hh)
+            gater = TT.dot(lower_shifted, GU_hh) + \
+                    TT.dot(lower_level, GW_hh) + Gb_hh
             if prev_level.ndim == 3:
                 gater_shape = gater.shape
                 gater = gater.reshape((gater_shape[0] * gater_shape[1], 3))
@@ -266,26 +270,37 @@ class RecursiveConvolutionalLayer(Layer):
                     lower_shifted * gater_left + \
                     lower_level * gater_right
 
-            if mask:
-                if prev_level.ndim == 3:
-                    mask = mask.dimshuffle('x',0,'x')
-                else:
-                    mask = mask.dimshuffle('x', 0)
-                new_level = mask * act + (1. - mask) * lower_level
+            if prev_level.ndim == 3:
+                mask_t = mask_t.dimshuffle('x',0,'x')
             else:
-                new_level = act
+                mask_t = mask_t.dimshuffle('x', 0)
+            #new_level = mask_t * act + (1. - mask_t) * lower_level
+            new_level = TT.switch(mask_t, act, lower_level)
 
             return new_level
 
         rval, updates = theano.scan(_level_fprop,
-                        sequences = [mask],
+                        sequences = [mask[1:]],
                         outputs_info = [state_below],
                         name='layer_%s'%self.name,
                         profile=self.profile,
                         n_steps = nsteps-1)
 
-        seqlens = TT.cast(mask.sum(axis=0), 'int64')
-        roots = rval[-1][seqlens]
+        seqlens = TT.cast(mask.sum(axis=0), 'int64')-1
+        roots = rval[-1]
+
+        if state_below.ndim == 3:
+            def _grab_root(seqlen,one_sample,prev_sample):
+                return one_sample[seqlen]
+
+            roots, updates = theano.scan(_grab_root,
+                    sequences = [seqlens, roots.dimshuffle(1,0,2)],
+                    outputs_info = [TT.alloc(0., self.n_hids)],
+                    name='grab_root_%s'%self.name,
+                    profile=self.profile)
+            roots = roots.dimshuffle('x', 0, 1)
+        else:
+            roots = roots[seqlens] # there should be only one, so it's fine.
 
         # Note that roots has only a single timestep
         new_h = roots
