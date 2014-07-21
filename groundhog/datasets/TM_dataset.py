@@ -160,9 +160,10 @@ class TMIterator(object):
             return self.output_format(source_data, target_data)
 
 class PytablesBitextFetcher(threading.Thread):
-    def __init__(self, parent):
+    def __init__(self, parent, start_offset):
         threading.Thread.__init__(self)
         self.parent = parent
+        self.start_offset = start_offset
 
     def run(self):
         diter = self.parent
@@ -182,9 +183,11 @@ class PytablesBitextFetcher(threading.Thread):
         assert source_index.shape[0] == target_index.shape[0]
         data_len = source_index.shape[0]
 
-        offset = 0
-        if diter.shuffle:
-            offset = np.random.randint(data_len)
+        offset = self.start_offset
+        if offset == -1:
+            offset = 0
+            if diter.shuffle:
+                offset = np.random.randint(data_len)
         logger.debug("{} entries".format(data_len))
         logger.debug("Starting from the entry {}".format(offset))
 
@@ -210,7 +213,7 @@ class PytablesBitextFetcher(threading.Thread):
                 target_sents.append(target_data[tpos:tpos + tlen].astype(diter.dtype))
 
             if len(source_sents):
-                diter.queue.put([source_sents, target_sents])
+                diter.queue.put([int(offset), source_sents, target_sents])
             if last_batch:
                 diter.queue.put([None])
                 return
@@ -237,14 +240,16 @@ class PytablesBitextIterator(object):
 
         self.exit_flag = False
 
-        self.queue = Queue.Queue(maxsize=queue_size)
-        self.gather = PytablesBitextFetcher(self)
+    def start(self, start_offset):
+        self.queue = Queue.Queue(maxsize=self.queue_size)
+        self.gather = PytablesBitextFetcher(self, start_offset)
         self.gather.daemon = True
         self.gather.start()
 
     def __del__(self):
-        self.gather.exitFlag = True
-        self.gather.join()
+        if hasattr(self, 'gather'):
+            self.gather.exitFlag = True
+            self.gather.join()
 
     def __iter__(self):
         return self
@@ -253,7 +258,8 @@ class PytablesBitextIterator(object):
         batch = self.queue.get()
         if not batch:
             return None
-        return batch[0], batch[1]
+        self.next_offset = batch[0]
+        return batch[1], batch[2]
 
 class NNJMContextIterator(object):
 

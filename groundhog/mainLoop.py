@@ -130,7 +130,7 @@ class MainLoop(object):
             self.state[pname] = 1e20
 
         n_elems = state['loopIters'] // state['trainFreq'] + 1
-        self.timings = {'step' : 0}
+        self.timings = {'step' : 0, 'next_offset' : -1}
         for name in self.algo.return_names:
             self.timings[name] = numpy.zeros((n_elems,), dtype='float32')
         if self.l2_params:
@@ -256,21 +256,28 @@ class MainLoop(object):
             traceback.print_exc()
 
     def main(self):
+        assert self.reset == -1
+
         print_mem('start')
         self.state['gotNaN'] = 0
-        self.start_time = time.time()
+        start_time = time.time()
+        self.start_time = start_time
         self.batch_start_time = time.time()
+
         self.step = int(self.timings['step'])
         self.algo.step = self.step
+
         self.save_iter = 0
         self.save()
         if self.channel is not None:
             self.channel.save()
         self.save_time = time.time()
+
         last_cost = 1.
-        start_time = time.time()
-        self.start_time = start_time
         self.state['clr'] = self.state['lr']
+        self.train_data.start(self.timings['next_offset']
+                if 'next_offset' in self.timings
+                else -1)
 
         while (self.step < self.state['loopIters'] and
                last_cost > .1*self.state['minerr'] and
@@ -336,6 +343,7 @@ class MainLoop(object):
 
                 self.step += 1
                 self.timings['step'] = self.step
+                self.timings['next_offset'] = self.train_data.next_offset
                 print "took {}".format(time.time() - st)
             except KeyboardInterrupt:
                 self.state['wholetime'] = float(time.time() - start_time)

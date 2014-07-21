@@ -55,6 +55,7 @@ def main():
         state['shuffle'] = False
         state['use_infinite_loop'] = False
         data_iter = get_batch_iterator(state, rng)
+        data_iter.start(0)
         score_file = open(args.scores, "w")
 
         scorer = enc_dec.create_scorer(batch=True)
