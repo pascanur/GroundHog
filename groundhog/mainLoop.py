@@ -288,11 +288,10 @@ class MainLoop(object):
                 self.state['step'] = self.step
                 last_cost = rvals['cost']
                 for name in rvals.keys():
-                    pos = self.step // self.state['trainFreq']
-                    self.timings[name][pos] = float(numpy.array(rvals[name]))
+                    self.timings[name][self.step] = float(numpy.array(rvals[name]))
                 if self.l2_params:
                     for param in self.model.params:
-                        self.timings["l2_" + param.name][pos] =\
+                        self.timings["l2_" + param.name][self.step] =\
                             numpy.mean(param.get_value() ** 2) ** 0.5
 
                 if (numpy.isinf(rvals['cost']) or

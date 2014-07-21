@@ -8,6 +8,8 @@ import pprint
 import numpy
 
 from groundhog.trainer.SGD_adadelta import SGD as SGD_adadelta
+from groundhog.trainer.SGD import SGD as SGD
+from groundhog.trainer.SGD_momentum import SGD as SGD_momentum
 from groundhog.mainLoop import MainLoop
 from experiments.rnnencdec import\
         RNNEncoderDecoder, prototype_state, get_batch_iterator
@@ -30,7 +32,7 @@ class RandomSamplePrinter(object):
 
         sample_idx = 0
         while sample_idx < self.state['n_examples']:
-            batch = self.train_iter.next()
+            batch = self.train_iter.next(peek=True)
             xs, ys = batch['x'], batch['y']
             for seq_idx in range(xs.shape[1]):
                 if sample_idx == self.state['n_examples']:
@@ -50,8 +52,9 @@ class RandomSamplePrinter(object):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", help="State to use")
-    parser.add_argument("--proto", help="Prototype state to use for state", default="prototype_state")
-    parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
+    parser.add_argument("--proto",  default="prototype_state",
+        help="Prototype state to use for state")
+    parser.add_argument("changes",  nargs="*", help="Changes to state", default="")
     return parser.parse_args()
 
 def main():
@@ -61,7 +64,8 @@ def main():
     if args.state:
         with open(args.state) as src:
             state.update(cPickle.load(src))
-    state.update(eval("dict({})".format(args.changes)))
+    for change in args.changes:
+        state.update(eval("dict({})".format(change)))
 
     logging.basicConfig(level=getattr(logging, state['level']), format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
     logger.debug("State:\n{}".format(pprint.pformat(state)))
@@ -74,11 +78,13 @@ def main():
     logger.debug("Load data")
     train_data = get_batch_iterator(state, rng)
     logger.debug("Compile trainer")
-    algo = SGD_adadelta(lm_model, state, train_data)
+    algo = eval(state['algo'])(lm_model, state, train_data)
     logger.debug("Run training")
     main = MainLoop(train_data, None, None, lm_model, algo, state, None,
             reset=state['reset'],
-            hooks=[RandomSamplePrinter(state, lm_model, train_data)])
+            hooks=[RandomSamplePrinter(state, lm_model, train_data)]
+                if state['hookFreq'] >= 0
+                else None)
     if state['reload']:
         main.load()
     if state['loopIters'] > 0:

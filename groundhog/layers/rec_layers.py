@@ -23,7 +23,8 @@ from groundhog.utils import sample_weights, \
         sample_weights_classic,\
         sample_weights_orth, \
         init_bias, \
-        constant_shape
+        constant_shape, \
+        sample_zeros
 from basic import Layer
 
 class RecurrentMultiLayer(Layer):
@@ -1045,6 +1046,7 @@ class RecurrentLayer(Layer):
         :param no_noise_bias: flag saying if weight noise should be added to
             the bias as well
         """
+
         rval = []
         if self.weight_noise and use_noise and self.noise_params:
             W_hh = self.W_hh + self.nW_hh
@@ -1058,18 +1060,27 @@ class RecurrentLayer(Layer):
                 G_hh = self.G_hh
             if self.reseting:
                 R_hh = self.R_hh
+
+        # Reset gate:
+        # optionally reset the hidden state.
         if self.reseting and reseter_below:
             reseter = self.reseter_activation(TT.dot(state_before, R_hh) +
                     reseter_below)
-            state_before_ = reseter * state_before
+            reseted_state_before = reseter * state_before
         else:
-            state_before_ = state_before
-        preactiv = TT.dot(state_before_, W_hh) + state_below
+            reseted_state_before = state_before
+
+        # Feed the input to obtain potential new state.
+        preactiv = TT.dot(reseted_state_before, W_hh) + state_below
         h = self.activation(preactiv)
+
+        # Update gate:
+        # optionally reject the potential new state and use the new one.
         if self.gating and gater_below:
             gater = self.gater_activation(TT.dot(state_before, G_hh) +
                     gater_below)
             h = gater * h + (1-gater) * state_before
+
         if self.activ_noise and use_noise:
             h = h + self.trng.normal(h.shape, avg=0, std=self.activ_noise, dtype=h.dtype)
         if mask is not None:
