@@ -19,7 +19,8 @@ from groundhog.utils import sample_weights, \
         sample_weights_classic,\
         sample_weights_orth, \
         init_bias, \
-        constant_shape
+        constant_shape, \
+        sample_zeros
 from basic import Layer
 
 
@@ -274,7 +275,6 @@ class RecursiveConvolutionalLayer(Layer):
                 mask_t = mask_t.dimshuffle('x',0,'x')
             else:
                 mask_t = mask_t.dimshuffle('x', 0)
-            #new_level = mask_t * act + (1. - mask_t) * lower_level
             new_level = TT.switch(mask_t, act, lower_level)
 
             return new_level
