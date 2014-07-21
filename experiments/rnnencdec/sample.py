@@ -5,6 +5,7 @@ import cPickle
 import traceback
 import logging
 import time
+import sys
 
 import numpy
 
@@ -230,6 +231,7 @@ def main():
                 print "Translation:", trans[best]
             total_cost += costs[best]
             if i % 100 == 0:
+                sys.stdout.flush()
                 logger.debug("Current speed is {} per sentence".
                         format((time.time() - start_time) / i))
         print "Total cost of the translations: {}".format(total_cost)
