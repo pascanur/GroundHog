@@ -39,14 +39,6 @@ class BeamSearch(object):
         self.comp_next_states = self.enc_dec.create_next_states_computer()
 
     def search(self, seq, n_samples, ignore_unk=False, minlen=1):
-        total_timer = Timer()
-        next_probs_timer = Timer()
-        next_states_timer = Timer()
-        new_trans_timer = Timer()
-        choice_timer = Timer()
-
-        total_timer.start()
-
         c = self.comp_repr(seq)[0]
         states = map(lambda x : x[None, :], self.comp_init_states(c))
 
@@ -65,9 +57,7 @@ class BeamSearch(object):
             last_words = (numpy.array(map(lambda t : t[-1], trans))
                     if k > 0
                     else numpy.zeros(beam_size, dtype="int64"))
-            next_probs_timer.start()
             log_probs = numpy.log(self.comp_next_probs(c, last_words, *states)[0])
-            next_probs_timer.finish()
 
             # Adjust log probs according to search restrictions
             if ignore_unk:
@@ -75,7 +65,6 @@ class BeamSearch(object):
             if k < minlen:
                 log_probs[:,self.eos_id] = -numpy.inf
 
-            choice_timer.start()
             # Find the best options by calling argpartition of flatten array
             next_costs = numpy.array(costs)[:, None] - log_probs
             flat_next_costs = next_costs.flatten()
@@ -88,9 +77,7 @@ class BeamSearch(object):
             trans_indices = best_costs_indices / voc_size
             word_indices = best_costs_indices % voc_size
             costs = flat_next_costs[best_costs_indices]
-            choice_timer.finish()
 
-            new_trans_timer.start()
             new_trans = [[]] * n_samples
             new_costs = numpy.zeros(n_samples)
             new_states = [numpy.zeros((n_samples, c.shape[0]), dtype="float32") for level
@@ -103,11 +90,8 @@ class BeamSearch(object):
                 for level in range(num_levels):
                     new_states[level][i] = states[level][orig_idx]
                 inputs[i] = next_word
-            new_trans_timer.finish()
 
-            next_states_timer.start()
             new_states = self.comp_next_states(c, inputs, *new_states)
-            next_states_timer.finish()
 
             trans = []
             costs = []
@@ -123,15 +107,6 @@ class BeamSearch(object):
                     fin_costs.append(new_costs[i])
             states = map(lambda x : x[indices], new_states)
 
-        total_timer.finish()
-        logging.debug("""Took {}, next probs took {},
-                next states took {},
-                new translations took {}, choices took {}""".format(
-            total_timer.total,
-            next_probs_timer.total,
-            next_states_timer.total,
-            new_trans_timer.total,
-            choice_timer.total))
         return fin_trans, fin_costs
 
 def indices_to_words(i2w, seq):
@@ -194,7 +169,10 @@ def parse_args():
     parser.add_argument("--beam-search", help="Beam size, turns on beam-search", type=int)
     parser.add_argument("--source", help="File of source sentences", default="")
     parser.add_argument("--trans", help="File to save translations in", default="")
-    parser.add_argument("--normalize", help="Normalize log-prob with the word count", action="store_true", default=False)
+    parser.add_argument("--normalize", help="Normalize log-prob with the word count",
+        action="store_true", default=False)
+    parser.add_argument("--verbose", action="store_true",
+        default=False, help="Be verbose")
     parser.add_argument("model_path", help="Path to the model")
     parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
     return parser.parse_args()
@@ -234,21 +212,27 @@ def main():
         fsrc = open(args.source, 'r')
         ftrans = open(args.trans, 'w')
 
+        start_time = time.time()
+
         n_samples = args.beam_search
         total_cost = 0.0
         logging.debug("Beam size: {}".format(n_samples))
-        for line in fsrc:
+        for i, line in enumerate(fsrc):
             seqin = line.strip()
             seq,parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
-            print "Parsed Input:", parsed_in
+            if args.verbose:
+                print "Parsed Input:", parsed_in
             trans, costs = sample(lm_model, seq, n_samples, sampler=sampler,
                     beam_search=beam_search, normalize=args.normalize)
             best = numpy.argmin(costs)
             print >>ftrans, trans[best]
-            print "Translation:", trans[best]
+            if args.verbose:
+                print "Translation:", trans[best]
             total_cost += costs[best]
+            if i % 100 == 0:
+                logger.debug("Current speed is {} per sentence".
+                        format((time.time() - start_time) / i))
         print "Total cost of the translations: {}".format(total_cost)
-
 
         fsrc.close()
         ftrans.close()
