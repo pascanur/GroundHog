@@ -193,6 +193,69 @@ class RecursiveConvolutionalLayer(Layer):
             self.noise_params_shape_fn = [constant_shape(x.get_value().shape)
                             for x in self.noise_params]
 
+    def step_fprop(self, mask_t, prev_level, return_gates = False):
+        if self.weight_noise and use_noise and self.noise_params:
+            W_hh = self.W_hh + self.nW_hh
+            U_hh = self.U_hh + self.nU_hh
+            b_hh = self.b_hh + self.nb_hh
+        else:
+            W_hh = self.W_hh
+            U_hh = self.U_hh
+            b_hh = self.b_hh
+        GW_hh = self.GW_hh
+        GU_hh = self.GU_hh
+        Gb_hh = self.Gb_hh
+
+        if prev_level.ndim == 3:
+            b_hh = b_hh.dimshuffle('x','x',0)
+        else:
+            b_hh = b_hh.dimshuffle('x',0)
+        lower_level = prev_level
+
+        prev_shifted = TT.zeros_like(prev_level)
+        prev_shifted = TT.set_subtensor(prev_shifted[1:], prev_level[:-1])
+        lower_shifted = prev_shifted
+
+        prev_shifted = TT.dot(prev_shifted, U_hh)
+        prev_level = TT.dot(prev_level, W_hh)
+        new_act = self.activation(prev_level + prev_shifted + b_hh)
+
+        gater = TT.dot(lower_shifted, GU_hh) + \
+                TT.dot(lower_level, GW_hh) + Gb_hh
+        if prev_level.ndim == 3:
+            gater_shape = gater.shape
+            gater = gater.reshape((gater_shape[0] * gater_shape[1], 3))
+        gater = TT.nnet.softmax(gater)
+        if prev_level.ndim == 3:
+            gater = gater.reshape((gater_shape[0], gater_shape[1], 3))
+
+        if prev_level.ndim == 3:
+            gater_new = gater[:,:,0].dimshuffle(0,1,'x')
+            gater_left = gater[:,:,1].dimshuffle(0,1,'x')
+            gater_right = gater[:,:,2].dimshuffle(0,1,'x')
+        else:
+            gater_new = gater[:,0].dimshuffle(0,'x')
+            gater_left = gater[:,1].dimshuffle(0,'x')
+            gater_right = gater[:,2].dimshuffle(0,'x')
+
+        act = new_act * gater_new + \
+                lower_shifted * gater_left + \
+                lower_level * gater_right
+
+        if mask_t:
+            if prev_level.ndim == 3:
+                mask_t = mask_t.dimshuffle('x',0,'x')
+            else:
+                mask_t = mask_t.dimshuffle('x', 0)
+            new_level = TT.switch(mask_t, act, lower_level)
+        else:
+            new_level = act
+
+        if return_gates:
+            return new_level, gater
+
+        return new_level
+
     def fprop(self,
               state_below,
               mask=None,
@@ -221,65 +284,8 @@ class RecursiveConvolutionalLayer(Layer):
             mask = TT.alloc(1., nsteps, 1)
 
         rval = []
-        if self.weight_noise and use_noise and self.noise_params:
-            W_hh = self.W_hh + self.nW_hh
-            U_hh = self.U_hh + self.nU_hh
-            b_hh = self.b_hh + self.nb_hh
-        else:
-            W_hh = self.W_hh
-            U_hh = self.U_hh
-            b_hh = self.b_hh
-        GW_hh = self.GW_hh
-        GU_hh = self.GU_hh
-        Gb_hh = self.Gb_hh
 
-        if state_below.ndim == 3:
-            b_hh = b_hh.dimshuffle('x','x',0)
-        else:
-            b_hh = b_hh.dimshuffle('x',0)
-
-        def _level_fprop(mask_t, prev_level):
-            lower_level = prev_level
-
-            prev_shifted = TT.zeros_like(prev_level)
-            prev_shifted = TT.set_subtensor(prev_shifted[1:], prev_level[:-1])
-            lower_shifted = prev_shifted
-
-            prev_shifted = TT.dot(prev_shifted, U_hh)
-            prev_level = TT.dot(prev_level, W_hh)
-            new_act = self.activation(prev_level + prev_shifted + b_hh)
-
-            gater = TT.dot(lower_shifted, GU_hh) + \
-                    TT.dot(lower_level, GW_hh) + Gb_hh
-            if prev_level.ndim == 3:
-                gater_shape = gater.shape
-                gater = gater.reshape((gater_shape[0] * gater_shape[1], 3))
-            gater = TT.nnet.softmax(gater)
-            if prev_level.ndim == 3:
-                gater = gater.reshape((gater_shape[0], gater_shape[1], 3))
-
-            if prev_level.ndim == 3:
-                gater_new = gater[:,:,0].dimshuffle(0,1,'x')
-                gater_left = gater[:,:,1].dimshuffle(0,1,'x')
-                gater_right = gater[:,:,2].dimshuffle(0,1,'x')
-            else:
-                gater_new = gater[:,0].dimshuffle(0,'x')
-                gater_left = gater[:,1].dimshuffle(0,'x')
-                gater_right = gater[:,2].dimshuffle(0,'x')
-
-            act = new_act * gater_new + \
-                    lower_shifted * gater_left + \
-                    lower_level * gater_right
-
-            if prev_level.ndim == 3:
-                mask_t = mask_t.dimshuffle('x',0,'x')
-            else:
-                mask_t = mask_t.dimshuffle('x', 0)
-            new_level = TT.switch(mask_t, act, lower_level)
-
-            return new_level
-
-        rval, updates = theano.scan(_level_fprop,
+        rval, updates = theano.scan(self.step_fprop,
                         sequences = [mask[1:]],
                         outputs_info = [state_below],
                         name='layer_%s'%self.name,
