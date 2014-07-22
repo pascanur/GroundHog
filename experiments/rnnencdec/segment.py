@@ -34,7 +34,7 @@ def get_models():
             state_fr2en.update(cPickle.load(src))
     state_fr2en.update(eval("dict({})".format(args.changes)))
 
-    logging.basicConfig(level=logging.DEBUG, 
+    logging.basicConfig(level=logging.DEBUG,
             format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     rng = numpy.random.RandomState(state_en2fr['seed'])
@@ -45,7 +45,7 @@ def get_models():
     indx_word_src = cPickle.load(open(state_en2fr['word_indx'],'rb'))
     indx_word_trgt = cPickle.load(open(state_en2fr['word_indx_trgt'], 'rb'))
 
-    if hasattr(args, 'state_fr2en') and args.state_fr2en is not None: 
+    if hasattr(args, 'state_fr2en') and args.state_fr2en is not None:
         rng = numpy.random.RandomState(state_fr2en['seed'])
         enc_dec_fr_2_en = RNNEncoderDecoder(state_fr2en, rng)
         enc_dec_fr_2_en.build()
@@ -56,7 +56,7 @@ def get_models():
             lm_model_fr_2_en, enc_dec_fr_2_en, state_fr2en]
     else:
         return [lm_model_en_2_fr, enc_dec_en_2_fr, indx_word_src, indx_word_trgt, state_en2fr,\
-                None, None, None] 
+                None, None, None]
 
 def chunks(l, n):
     """
@@ -99,33 +99,33 @@ def process_sentence(source_sentence, model, max_phrase_length, n_samples,
     if src_seq[-1] == eol_src:
         src_seq = src_seq[:-1]
     n_s = len(src_seq)
-   
+
     #Create sorted phrase lists
     tiled_source_phrase_list = []
     index_order_list = []
     for i in xrange(n_s):
         for j in numpy.arange(i, min(i+max_phrase_length, n_s)):
                     index_order_list.append([i, j])
-     
+
     logger.debug("sorting list")
     index_order_list.sort(key=lambda (i, j): (j - i))
- 
+
     logger.debug("creating phrase lists")
     if add_period:
-        period_src = indx_word_src['.'] 
+        period_src = indx_word_src['.']
         for i, j in index_order_list:
             tiled_source_phrase_list.append(numpy.hstack((src_seq[i:j+1], period_src, eol_src)))
     else:
         for i, j in index_order_list:
             tiled_source_phrase_list.append(numpy.hstack((src_seq[i:j+1], eol_src)))
- 
+
 
     #Compute nested score dictionary
     logger.debug("computing nested score dictionary")
     print("Next sentence: scoring of {} phrases".format(len(index_order_list)), file=f_total)
     score_dict = {}
-    trans = {}  
-    
+    trans = {}
+
     for phrase_idx in xrange(0, len(index_order_list)):
         logger.debug("{0} out of {1}".format(phrase_idx, len(index_order_list)))
         i, j = index_order_list[phrase_idx]
@@ -149,22 +149,22 @@ def process_sentence(source_sentence, model, max_phrase_length, n_samples,
                                                     input_phrase= \
                                                            tiled_source_phrase_list[phrase_idx],
                                                     model=model,
-                                                    n_samples=n_samples, 
+                                                    n_samples=n_samples,
                                                     reverse_score=reverse_score,
                                                     normalize=normalize
                 )
-                trans[i, j] = suggested_translation 
-                score_dict[i, j] = score  
+                trans[i, j] = suggested_translation
+                score_dict[i, j] = score
 
         else:
             phrase_to_translate = tiled_source_phrase_list[phrase_idx]
             suggested_translation, score = sample_targets(
                                                 input_phrase=phrase_to_translate,
-                                                model=model, n_samples=n_samples, 
+                                                model=model, n_samples=n_samples,
                                                 reverse_score=reverse_score,
                                                 normalize=normalize
             )
-            trans[i, j] = suggested_translation 
+            trans[i, j] = suggested_translation
             score_dict[i, j] = score
 
     #Remove the period at the end if not last word
@@ -198,14 +198,14 @@ def sample_targets(input_phrase, model, n_samples, reverse_score, normalize):
 
     [lm_model, enc_dec, indx_word_src, indx_word_trgt, state, \
             lm_model_fr_2_en, enc_dec_fr_2_en, state_fr2en] = model
- 
+
     beam_search = BeamSearch(enc_dec)
     beam_search.compile()
     sampler = enc_dec.create_sampler(many_samples=True)
 
     #sample_func can take argument : normalize (bool)
     trans, scores, trans_bin = sample_func(lm_model, input_phrase, n_samples,
-                                           sampler=sampler, beam_search=beam_search) 
+                                           sampler=sampler, beam_search=beam_search)
 
     #Reordering scores-trans
     #Warning : selection of phrases to rescore is hard-coded
@@ -216,23 +216,23 @@ def sample_targets(input_phrase, model, n_samples, reverse_score, normalize):
     #Reverse scoring of selected phrases
     if reverse_score:
         reverse_scorer = enc_dec_fr_2_en.create_scorer(batch=True)
-    
+
         source_phrases_to_reverse_score = []
         target_phrases_to_reverse_score = []
         for tra_bin in trans_bin:
             source_phrases_to_reverse_score.append(input_phrase)
-            target_phrases_to_reverse_score.append(tra_bin) 
-     
-        state_fr2en['seqlen'] = 1000 
+            target_phrases_to_reverse_score.append(tra_bin)
+
+        state_fr2en['seqlen'] = 1000
         x, x_mask, y, y_mask = create_padded_batch(
                                     state_fr2en,
                                     [numpy.asarray(target_phrases_to_reverse_score)],
                                     [numpy.asarray(source_phrases_to_reverse_score)])
-    
+
         reverse_scores = - reverse_scorer(x, y, x_mask, y_mask)[0]
 
         for index in xrange(len(scores)):
-            scores[index] = (scores[index] + reverse_scores[index]) / 2.  
+            scores[index] = (scores[index] + reverse_scores[index]) / 2.
 
     else:
         for index in xrange(len(scores)):
@@ -249,7 +249,7 @@ def sample_targets(input_phrase, model, n_samples, reverse_score, normalize):
     return trans, final_score
 
 
-def find_align(source, model, max_phrase_length, n_samples, 
+def find_align(source, model, max_phrase_length, n_samples,
                normalize, copy_UNK_words, add_period, reverse_score):
 
     [lm_model, enc_dec, indx_word_src, indx_word_trgt, state, \
@@ -257,12 +257,12 @@ def find_align(source, model, max_phrase_length, n_samples,
 
     split_source_sentence = source.strip().split()
     n_s = len(split_source_sentence)
-   
+
     #Sampling and computing scores : bottleneck
-    phrases, scores, full_translation = process_sentence(source_sentence=source, model=model, 
-                                            max_phrase_length=max_phrase_length, 
+    phrases, scores, full_translation = process_sentence(source_sentence=source, model=model,
+                                            max_phrase_length=max_phrase_length,
                                             n_samples=n_samples,
-                                            normalize=normalize, 
+                                            normalize=normalize,
                                             copy_UNK_words=copy_UNK_words,
                                             add_period=add_period,
                                             reverse_score=reverse_score)
@@ -276,19 +276,19 @@ def find_align(source, model, max_phrase_length, n_samples,
     best_choice[0] = 0
 
     for i in xrange(1, n_s+1):
-        for j in xrange(max(0, i-max_phrase_length), i): 
-            cand_cost = prefix_score[j] + scores[j, i-1]  
+        for j in xrange(max(0, i-max_phrase_length), i):
+            cand_cost = prefix_score[j] + scores[j, i-1]
             if cand_cost < prefix_score[i]:
                 prefix_score[i] = cand_cost
                 best_choice[i] = j
-    
+
     phrase_ends = []
     i = n_s
     while i > 0:
         phrase_ends.append(i)
         i = best_choice[i]
     phrase_ends = list(reversed(phrase_ends))
-    
+
     segmentation = []
     past_index = 0
     for i in phrase_ends:
@@ -296,7 +296,7 @@ def find_align(source, model, max_phrase_length, n_samples,
        past_index = i
 
     logger.debug("end of segmentation")
-    
+
     T = []
     segmented_target = []
     segmented_source = []
@@ -306,7 +306,7 @@ def find_align(source, model, max_phrase_length, n_samples,
             T.append(value)
             segmented_target.append([phrases[i,j]])
             segmented_source.append([split_source_sentence[k] for k in xrange(i, j+1)])
-    
+
     print("Input sentence: ", source, file=f_total)
     print("Segmentation: ", segmented_source, file=f_total)
     print("Translation with segmentation: {}".format(" ".join(T)), file=f_total)
@@ -333,7 +333,7 @@ def main_with_segmentation(begin, end, copy_UNK_words, normalize, reverse_score,
             if i < begin:
                 pass
             else:
-                s_text.append(line)  
+                s_text.append(line)
 
     import time
     t0 = time.time()
@@ -344,8 +344,8 @@ def main_with_segmentation(begin, end, copy_UNK_words, normalize, reverse_score,
     for source in s_text:
         len_sentence = len(source.strip().split())
 
-        find_align(source=source, model=model, max_phrase_length=max_phrase_length, 
-                    n_samples=n_samples, normalize=normalize, add_period=add_period, 
+        find_align(source=source, model=model, max_phrase_length=max_phrase_length,
+                    n_samples=n_samples, normalize=normalize, add_period=add_period,
                     copy_UNK_words=copy_UNK_words, reverse_score=reverse_score)
         counter_total += 1
         counter_processed += 1
@@ -363,6 +363,9 @@ if __name__ == "__main__":
     base_file_name = "fr2en_segm"
 
     args = parse_args()
+    assert args.state_en2fr
+    assert args.model_path_en2fr
+
     if args.copy_UNK_words:
         base_file_name += "copy"
         logger.debug("copy_UNK_words is True")
