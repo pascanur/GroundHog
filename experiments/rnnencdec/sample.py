@@ -229,7 +229,7 @@ def main():
             if args.verbose:
                 print "Translation:", trans[best]
             total_cost += costs[best]
-            if i % 100 == 0:
+            if i % 100 == 0 and i > 0:
                 logger.debug("Current speed is {} per sentence".
                         format((time.time() - start_time) / i))
         print "Total cost of the translations: {}".format(total_cost)
