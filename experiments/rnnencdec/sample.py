@@ -233,7 +233,7 @@ def main():
             if i % 100 == 0:
                 sys.stdout.flush()
                 logger.debug("Current speed is {} per sentence".
-                        format((time.time() - start_time) / i))
+                        format((time.time() - start_time) / (i + 1)))
         print "Total cost of the translations: {}".format(total_cost)
 
         fsrc.close()
