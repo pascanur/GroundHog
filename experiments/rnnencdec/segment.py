@@ -229,7 +229,10 @@ def sample_targets(input_phrase, model, n_samples, reverse_score, normalize):
                                     [numpy.asarray(target_phrases_to_reverse_score)],
                                     [numpy.asarray(source_phrases_to_reverse_score)])
     
-        reverse_scores = - reverse_scorer(x, y, x_mask, y_mask)[0]
+        reverse_scores = - reverse_scorer(numpy.atleast_2d(x), 
+                                          numpy.atleast_2d(y),
+                                          numpy.atleast_2d(x_mask),
+                                          numpy.atleast_2d(y_mask))[0]
 
         for index in xrange(len(scores)):
             scores[index] = (scores[index] + reverse_scores[index]) / 2.  
