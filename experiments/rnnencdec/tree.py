@@ -174,6 +174,7 @@ def main():
         nx.draw_networkx_nodes(G, pos=nodes_pos, nodelist=aggregate_nodes, node_color='red', alpha=0.8, node_size=80)
         nx.draw_networkx_edges(G, pos=nodes_pos, edge_color=colorList, edgelist=edges)
         nx.draw_networkx_labels(G,pos=nodes_pos,labels=nodes_labels,font_family='sans-serif')
+        plt.axis('off')
         figname = raw_input('Save to: ')
         if figname[-3:] == "pdf":
             plt.savefig(figname, type='pdf')
