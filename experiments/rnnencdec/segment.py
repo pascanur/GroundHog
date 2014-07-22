@@ -69,6 +69,8 @@ def chunks(l, n):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", help="Source sentences")
+    parser.add_argument("--from-scratch", action="store_true", default=False,
+        help="Start from scratch")
     parser.add_argument("--state_en2fr", help="State to use: en to fr")
     parser.add_argument("--model_path_en2fr", help="Path to the model: en to fr")
     parser.add_argument("--state_fr2en", help="State to use : fr to en")
@@ -82,8 +84,8 @@ def parse_args():
     parser.add_argument("--add_period", help="Add a period at the end of each phrase",
                         action='store_true')
     parser.add_argument("--changes",  nargs="?", help="Changes to state", default="")
-    parser.add_argument("--old_begin", type=int, help="first line to start translating")
-    parser.add_argument("--end", type=int, help="last line to translate (included)")
+    parser.add_argument("--old_begin", type=int, default=0, help="first line to start translating")
+    parser.add_argument("--end", type=int, default=10, help="last line to translate (included)")
     return parser.parse_args()
 
 
@@ -329,7 +331,7 @@ def main_with_segmentation(begin, end, copy_UNK_words, normalize, reverse_score,
     s_text = []
     t_text = []
 
-    logger.debug("selecting sentences from text")
+    logger.debug("begin: {}, end: {}".format(begin, end))
     for i, line in enumerate(f_source):
         if i> end:
             break
@@ -337,6 +339,7 @@ def main_with_segmentation(begin, end, copy_UNK_words, normalize, reverse_score,
             pass
         else:
             s_text.append(line)
+    logger.debug("Read {} sentences".format(len(s_text)))
 
     import time
     t0 = time.time()
@@ -368,6 +371,7 @@ if __name__ == "__main__":
     args = parse_args()
     assert args.state_en2fr
     assert args.model_path_en2fr
+    assert args.source
 
     if args.copy_UNK_words:
         base_file_name += "copy"
@@ -394,12 +398,13 @@ if __name__ == "__main__":
     just_translation_file_name = base_file_name + "trans.txt"
     total_file_name = base_file_name + "total.txt"
 
+    # Decide on the start sentence
     if os.path.isfile(console_file_name):
         with open(console_file_name) as f:
             line = None
             for line in f:
                 pass
-            if line is not None:
+            if line is not None and not args.from_scratch:
                 last_sentence_number = int(line.strip())
                 if last_sentence_number >= end:
                     sys.exit("job finished, end is {0}, begin is {0}".format(
@@ -410,6 +415,7 @@ if __name__ == "__main__":
                 begin = old_begin
     else:
         begin = old_begin
+
     with open(total_file_name, "a") as f_total, \
          open(args.source) as f_source, \
          open(console_file_name, "a") as f_console, \
