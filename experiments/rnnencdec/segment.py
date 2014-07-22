@@ -38,7 +38,7 @@ def get_models():
             format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     rng = numpy.random.RandomState(state_en2fr['seed'])
-    enc_dec_en_2_fr = RNNEncoderDecoder(state_en2fr, rng)
+    enc_dec_en_2_fr = RNNEncoderDecoder(state_en2fr, rng, skip_init=True)
     enc_dec_en_2_fr.build()
     lm_model_en_2_fr = enc_dec_en_2_fr.create_lm_model()
     lm_model_en_2_fr.load(args.model_path_en2fr)
@@ -47,7 +47,7 @@ def get_models():
 
     if hasattr(args, 'state_fr2en') and args.state_fr2en is not None:
         rng = numpy.random.RandomState(state_fr2en['seed'])
-        enc_dec_fr_2_en = RNNEncoderDecoder(state_fr2en, rng)
+        enc_dec_fr_2_en = RNNEncoderDecoder(state_fr2en, rng, skip_init=True)
         enc_dec_fr_2_en.build()
         lm_model_fr_2_en = enc_dec_fr_2_en.create_lm_model()
         lm_model_fr_2_en.load(args.model_path_fr2en)
@@ -230,8 +230,7 @@ def sample_targets(input_phrase, model, n_samples, reverse_score, normalize):
                                     [numpy.asarray(target_phrases_to_reverse_score)],
                                     [numpy.asarray(source_phrases_to_reverse_score)])
 
-        reverse_scores = - reverse_scorer(numpy.atleast_2d(x),
-                                          numpy.atleast_2d(y),
+        reverse_scores = - reverse_scorer(numpy.atleast_2d(x), numpy.atleast_2d(y),
                                           numpy.atleast_2d(x_mask),
                                           numpy.atleast_2d(y_mask))[0]
 
@@ -318,6 +317,8 @@ def find_align(source, model, max_phrase_length, n_samples,
     print("Translation without segmentation: {}".format(full_translation), file=f_total)
     print(" ".join(T), file=f_translation)
     f_total.flush()
+    f_console.flush()
+    f_translation.flush()
 
 
 def main_with_segmentation(begin, end, copy_UNK_words, normalize, reverse_score, add_period):
