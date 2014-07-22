@@ -167,7 +167,10 @@ def main():
         nx.draw_networkx_edges(G, pos=nodes_pos, edge_color=colorList, edgelist=edges)
         nx.draw_networkx_labels(G,pos=nodes_pos,labels=nodes_labels,font_family='sans-serif')
         figname = raw_input('Save to: ')
-        plt.savefig(figname)
+        if figname[-3:] == "pdf":
+            plt.savefig(figname, type='pdf')
+        else:
+            plt.savefig(figname)
         plt.close()
         G.clear()
 
