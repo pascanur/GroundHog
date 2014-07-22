@@ -68,6 +68,7 @@ def chunks(l, n):
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--source", help="Source sentences")
     parser.add_argument("--state_en2fr", help="State to use: en to fr")
     parser.add_argument("--model_path_en2fr", help="Path to the model: en to fr")
     parser.add_argument("--state_fr2en", help="State to use : fr to en")
@@ -328,15 +329,13 @@ def main_with_segmentation(begin, end, copy_UNK_words, normalize, reverse_score,
     t_text = []
 
     logger.debug("selecting sentences from text")
-    #with open("/data/lisatmp/vanmerb/joint_paper_hs/dev/ntst1213.en") as f:
-    with open("/data/lisatmp3/pougetj/dev08_11.en") as f:
-        for i, line in enumerate(f):
-            if i> end:
-                break
-            if i < begin:
-                pass
-            else:
-                s_text.append(line)
+    for i, line in enumerate(f_source):
+        if i> end:
+            break
+        if i < begin:
+            pass
+        else:
+            s_text.append(line)
 
     import time
     t0 = time.time()
@@ -411,7 +410,8 @@ if __name__ == "__main__":
     else:
         begin = old_begin
     with open(total_file_name, "a") as f_total, \
-           open(console_file_name, "a") as f_console, \
-           open(just_translation_file_name, "a") as f_translation:
+         open(args.source) as f_source, \
+         open(console_file_name, "a") as f_console, \
+         open(just_translation_file_name, "a") as f_translation:
         main_with_segmentation(begin, end, copy_UNK_words, normalize, reverse_score,
                                add_period)
