@@ -162,16 +162,9 @@ class SGD(object):
         self.prev_batch = None
 
     def __call__(self):
-        # for slow iterator
-        while True:
-            batch = self.data.next()
-            if batch:
-                self.prev_batch = batch
-                break
-            else:
-                if self.prev_batch:
-                    batch = self.prev_batch
-                    break
+        batch = self.data.next()
+        assert batch
+
         # Perturb the data (! and the model)
         if isinstance(batch, dict):
             batch = self.model.perturb(**batch)

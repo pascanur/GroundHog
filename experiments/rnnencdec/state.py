@@ -140,7 +140,7 @@ def prototype_state():
     # Error level to stop at
     state['minerr'] = -1
 
-    # Resetting data iterator during training
+    # Data iterator options
     state['reset'] = -1
     state['shuffle'] = True
     state['cache_size'] = 0

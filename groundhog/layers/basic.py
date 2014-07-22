@@ -180,7 +180,7 @@ class Container(object):
             else:
                 # FIXME: do not stop loading even if there's a parameter value missing
                 #raise Exception("No parameter {} given".format(p.name))
-                print "No parameter {} given: default initialization used"
+                logger.error( "No parameter {} given: default initialization used")
         unknown = {p.name for p in self.params} - set(vals.keys())
         if len(unknown):
             raise Exception("Unknown parameters {} given".format(unknown))
@@ -549,7 +549,7 @@ class Model(Container):
 
 class Operator(Layer):
     def __init__(self,
-                 apply_operator=None,
+#                 apply_operator=None,
                  n_in=0,
                  n_out = 0):
         super(Operator, self).__init__(n_in, n_out, rng=None)
