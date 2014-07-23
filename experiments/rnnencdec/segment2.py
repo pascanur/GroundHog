@@ -9,6 +9,7 @@ import cPickle
 import traceback
 import logging
 import numpy
+import time
 from itertools import izip, product
 from experiments.rnnencdec import RNNEncoderDecoder, prototype_state, parse_input, create_padded_batch
 from experiments.rnnencdec.sample import BeamSearch
@@ -16,6 +17,14 @@ from experiments.rnnencdec.sample import sample as sample_func
 from collections import defaultdict
 import operator
 
+cache = dict()
+
+def cached_sample_func(model, phrase, n_samples, sampler, beam_search):
+    global cache
+    k = (tuple(phrase), n_samples)
+    if not k in cache:
+        cache[k] = sample_func(model, phrase, n_samples, sampler, beam_search)
+    return cache[k]
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +42,6 @@ def get_models():
         with open(args.state_fr2en) as src:
             state_fr2en.update(cPickle.load(src))
     state_fr2en.update(eval("dict({})".format(args.changes)))
-
-    logging.basicConfig(level=logging.DEBUG,
-            format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     rng = numpy.random.RandomState(state_en2fr['seed'])
     enc_dec_en_2_fr = RNNEncoderDecoder(state_en2fr, rng, skip_init=True)
@@ -68,9 +74,12 @@ def chunks(l, n):
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--base", default="res", help="Base file name")
     parser.add_argument("--source", help="Source sentences")
     parser.add_argument("--from-scratch", action="store_true", default=False,
         help="Start from scratch")
+    parser.add_argument("--n-samples", type=int, default=10,
+        help="Beam size")
     parser.add_argument("--state_en2fr", help="State to use: en to fr")
     parser.add_argument("--model_path_en2fr", help="Path to the model: en to fr")
     parser.add_argument("--state_fr2en", help="State to use : fr to en")
@@ -125,7 +134,6 @@ def process_sentence(source_sentence, model, max_phrase_length, n_samples,
 
     #Compute nested score dictionary
     logger.debug("computing nested score dictionary")
-    print("Next sentence: scoring of {} phrases".format(len(index_order_list)), file=f_total)
     score_dict = {}
     trans = {}
 
@@ -207,7 +215,7 @@ def sample_targets(input_phrase, model, n_samples, reverse_score, normalize):
     sampler = enc_dec.create_sampler(many_samples=True)
 
     #sample_func can take argument : normalize (bool)
-    trans, scores, trans_bin = sample_func(lm_model, input_phrase, n_samples,
+    trans, scores, trans_bin = cached_sample_func(lm_model, input_phrase, n_samples,
                                            sampler=sampler, beam_search=beam_search)
 
     #Reordering scores-trans
@@ -255,7 +263,9 @@ def sample_targets(input_phrase, model, n_samples, reverse_score, normalize):
 
 
 def find_align(source, model, max_phrase_length, n_samples,
-               normalize, copy_UNK_words, add_period, reverse_score):
+        f_trans, f_total,
+        normalize=False, copy_UNK_words=False,
+        add_period=False, reverse_score=False):
 
     [lm_model, enc_dec, indx_word_src, indx_word_trgt, state, \
             lm_model_fr_2_en, enc_dec_fr_2_en, state_fr2en] = model
@@ -317,22 +327,20 @@ def find_align(source, model, max_phrase_length, n_samples,
     print("Translation with segmentation: {}".format(" ".join(T)), file=f_total)
     print("Translation with segmentation: {}".format(segmented_target), file=f_total)
     print("Translation without segmentation: {}".format(full_translation), file=f_total)
-    print(" ".join(T), file=f_translation)
+    print(" ".join(T), file=f_trans)
     f_total.flush()
-    f_console.flush()
-    f_translation.flush()
+    f_trans.flush()
 
-
-def main_with_segmentation(begin, end, copy_UNK_words, normalize, reverse_score, add_period):
+def main_with_segmentation(begin, end, n_samples,
+        source, console,
+        options, outputs):
     model = get_models()
-    n_samples = 20
     max_phrase_length = 20
 
     s_text = []
-    t_text = []
 
     logger.debug("begin: {}, end: {}".format(begin, end))
-    for i, line in enumerate(f_source):
+    for i, line in enumerate(source):
         if i> end:
             break
         if i < begin:
@@ -341,62 +349,53 @@ def main_with_segmentation(begin, end, copy_UNK_words, normalize, reverse_score,
             s_text.append(line)
     logger.debug("Read {} sentences".format(len(s_text)))
 
-    import time
     t0 = time.time()
     old_t1 = time.time()
     counter_processed = 0
     counter_total = 0
 
+    logger.debug("Translating with beam size {}".format(n_samples))
     for source in s_text:
-        len_sentence = len(source.strip().split())
+        global cache
+        cache = dict()
 
-        find_align(source=source, model=model, max_phrase_length=max_phrase_length,
-                    n_samples=n_samples, normalize=normalize, add_period=add_period,
-                    copy_UNK_words=copy_UNK_words, reverse_score=reverse_score)
+        for opts, (f_trans, f_total) in zip(options, outputs):
+            find_align(source, model, max_phrase_length, n_samples,
+                    f_trans, f_total,
+                    **opts)
+
         counter_total += 1
         counter_processed += 1
         t1 = time.time()
-        logger.debug("total time last sentence : {}".format(t1 -old_t1))
+        logger.debug("total time last sentence : {}".format(t1 - old_t1))
         old_t1 = t1
         logger.debug("total time : {}".format(t1 - t0))
         logger.debug("sentence processed : {}".format(counter_total + begin))
         logger.debug("total sentences processed : {}".format(counter_processed))
-        print(counter_total + begin , file=f_console)
+        print(counter_total + begin - 1, file=console)
+        console.flush()
 
 
-if __name__ == "__main__":
-
-    base_file_name = "fr2en_segm"
+def main():
+    logging.basicConfig(level=logging.DEBUG,
+            format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     args = parse_args()
     assert args.state_en2fr
     assert args.model_path_en2fr
+    assert args.state_fr2en
+    assert args.model_path_fr2en
     assert args.source
-
-    if args.copy_UNK_words:
-        base_file_name += "copy"
-        logger.debug("copy_UNK_words is True")
-    if args.normalize:
-        base_file_name += "norm"
-        logger.debug("normalize is True")
-    if args.reverse_score:
-        base_file_name += "rever"
-        logger.debug("reverse_score is True")
-    if args.add_period:
-        base_file_name += "add"
-        logger.debug("add_period is True")
-    normalize = args.normalize
-    copy_UNK_words = args.copy_UNK_words
-    add_period = args.add_period
-    reverse_score = args.reverse_score
+    n_samples = args.n_samples
+    base_file_name = args.base
     old_begin = args.old_begin
     end = args.end
 
-    base_file_name += "{}_{}".format(old_begin, end)
+    base_file_name += "_{}_{}".format(old_begin, end)
 
-    console_file_name = base_file_name + "cons.txt"
-    just_translation_file_name = base_file_name + "trans.txt"
-    total_file_name = base_file_name + "total.txt"
+    console_file_name = base_file_name + "_cons.txt"
+    just_translation_file_name = base_file_name + "_trans_{}.txt"
+    total_file_name = base_file_name + "_total_{}.txt"
 
     # Decide on the start sentence
     if os.path.isfile(console_file_name):
@@ -416,9 +415,21 @@ if __name__ == "__main__":
     else:
         begin = old_begin
 
-    with open(total_file_name, "a") as f_total, \
-         open(args.source) as f_source, \
-         open(console_file_name, "a") as f_console, \
-         open(just_translation_file_name, "a") as f_translation:
-        main_with_segmentation(begin, end, copy_UNK_words, normalize, reverse_score,
-                               add_period)
+    source = open(args.source, 'r')
+    console = open(console_file_name, "a")
+
+    modes = ['default', 'rev', 'norm', 'normrev']
+    options = [dict(),
+            dict(reverse_score=True),
+            dict(normalize=True),
+            dict(normalize=True, reverse_score=True)]
+    outputs = [(open(just_translation_file_name.format(k), 'a'),
+            open(total_file_name.format(k), 'a'))
+        for k in modes]
+
+    main_with_segmentation(begin, end, n_samples,
+            source, console,
+            options, outputs)
+
+if __name__ == "__main__":
+    main()
