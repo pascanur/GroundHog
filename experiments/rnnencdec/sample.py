@@ -123,15 +123,10 @@ class BeamSearch(object):
                     fin_costs.append(new_costs[i])
             states = map(lambda x : x[indices], new_states)
 
+        if not len(fin_trans) and ignore_unk:
+            return self.search(seq, n_samples, False, minlen)
+
         total_timer.finish()
-        logging.debug("""Took {}, next probs took {},
-                next states took {},
-                new translations took {}, choices took {}""".format(
-            total_timer.total,
-            next_probs_timer.total,
-            next_states_timer.total,
-            new_trans_timer.total,
-            choice_timer.total))
         return fin_trans, fin_costs
 
 def indices_to_words(i2w, seq):
@@ -157,6 +152,7 @@ def sample(lm_model, seq, n_samples,
             sentences.append(" ".join(sen))
             if verbose:
                 print "{}: {}".format(costs[i], sentences[-1])
+        return sentences, costs, trans
     elif sampler:
         sentences = []
         all_probs = []
@@ -182,10 +178,10 @@ def sample(lm_model, seq, n_samples,
             for pidx in sprobs:
                 print "{}: {} {} {}".format(pidx, -costs[pidx], all_probs[pidx], sentences[pidx])
             print
+        return sentences, costs
     else:
         raise Exception("I don't know what to do")
 
-    return sentences, costs, trans
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -267,7 +263,7 @@ def main():
                 traceback.print_exc()
                 continue
 
-            trans, costs = sample(lm_model, seq, n_samples, sampler=sampler,
+            sample(lm_model, seq, n_samples, sampler=sampler,
                     beam_search=beam_search, normalize=args.normalize,
                     alpha=alpha, verbose=True)
 
