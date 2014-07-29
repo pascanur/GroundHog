@@ -119,8 +119,6 @@ def create_padded_batch(state, x, y, return_dict=False):
     Ymask = Ymask[:,valid_inputs.nonzero()[0]]
     if len(valid_inputs.nonzero()[0]) <= 0:
         return None
-    logger.debug("X shape {}, Y shape {}, Xmask mean {}, Ymask mean {}".format(
-        X.shape, Y.shape, Xmask.mean(), Ymask.mean()))
 
     if return_dict:
         # Are Y and Y0 different?
