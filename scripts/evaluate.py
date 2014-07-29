@@ -17,7 +17,7 @@ def parse_args():
     parser.add_argument("--window", type=int, default=100, help="Window width")
     parser.add_argument("--hours", action="store_true", default=False, help="Display time on X-axis")
     parser.add_argument("--legend", default=None, help="Legend to use in plot")
-    parser.add_argument("--y", default="cost2_p_expl", help="What to plot")
+    parser.add_argument("--y", default="cost(log2)_p_expl", help="What to plot")
     parser.add_argument("timings", nargs="+", help="Path to timing files")
     parser.add_argument("plot_path", help="Path to save plot")
     return parser.parse_args()

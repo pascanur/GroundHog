@@ -112,7 +112,7 @@ def main():
         nodes_pos = {}
         nodes_labels = {}
         # input nodes
-        for nn in nodes:
+        for nn in nodes[:-1]:
             nidx += 1
             G.add_node(nn, pos=(nidx, 0), ndcolor="blue", label="%d"%nn)
             nodes_pos[nn] = (nidx, vpos)
@@ -126,48 +126,60 @@ def main():
             decisions = numpy.argmax(gater, -1)
             new_nodes_level = numpy.zeros(len(seq) - (dd+1))
             hpos = float(len(seq)+1) - 0.5 * (dd+1)
+            last_node = True
             for nn in xrange(len(seq)-(dd+1)):
                 hpos -= 1
-                # merge nodes
-                node_idx += 1
-                G.add_node(node_idx, ndcolor="red", label="m")
-                nodes_labels[node_idx] = "$\phi$"
-                nodes_pos[node_idx] = (hpos, vpos)
-                G.add_edge(nodes_level[-(nn+1)], node_idx, weight=gater[-(nn+1),0,0])
-                G.add_edge(nodes_level[-(nn+2)], node_idx, weight=gater[-(nn+1),0,0])
-                merge_nodes.append(node_idx)
+                if not last_node:
+                    # merge nodes
+                    node_idx += 1
+                    G.add_node(node_idx, ndcolor="red", label="m")
+                    nodes_labels[node_idx] = ""
+                    nodes_pos[node_idx] = (hpos, vpos)
+                    G.add_edge(nodes_level[-(nn+1)], node_idx, weight=gater[-(nn+1),0,0])
+                    G.add_edge(nodes_level[-(nn+2)], node_idx, weight=gater[-(nn+1),0,0])
+                    merge_nodes.append(node_idx)
 
-                merge_node = node_idx
-                # linear aggregation nodes
-                node_idx += 1
-                G.add_node(node_idx, ndcolor="red", label="")
-                nodes_labels[node_idx] = "$+$"
-                nodes_pos[node_idx] = (hpos, vpos+6)
-                G.add_edge(merge_node, node_idx, weight=gater[-(nn+1),0,0])
-                G.add_edge(nodes_level[-(nn+2)], node_idx, weight=gater[-(nn+1),0,1])
-                G.add_edge(nodes_level[-(nn+1)], node_idx, weight=gater[-(nn+1),0,2])
-                aggregate_nodes.append(node_idx)
+                    merge_node = node_idx
+                    # linear aggregation nodes
+                    node_idx += 1
+                    G.add_node(node_idx, ndcolor="red", label="")
+                    nodes_labels[node_idx] = "$+$"
+                    nodes_pos[node_idx] = (hpos, vpos+6)
+                    G.add_edge(merge_node, node_idx, weight=gater[-(nn+1),0,0])
+                    G.add_edge(nodes_level[-(nn+2)], node_idx, weight=gater[-(nn+1),0,1])
+                    G.add_edge(nodes_level[-(nn+1)], node_idx, weight=gater[-(nn+1),0,2])
+                    aggregate_nodes.append(node_idx)
 
-                new_nodes_level[-(nn+1)] = node_idx
+                    new_nodes_level[-(nn+1)] = node_idx
+                last_node = False
             nodes_level = copy.deepcopy(new_nodes_level)
             vpos += 12
 
         # TODO: Show only strong edges.
-        #edges = [(u,v,d) for (u,v,d) in G.edges(data=True) if d['weight'] > 0.33]
-        edges = G.edges(data=True)
+        threshold = float(raw_input('Threshold: '))
+        edges = [(u,v,d) for (u,v,d) in G.edges(data=True) if d['weight'] > threshold]
+        #edges = G.edges(data=True)
 
-        cm = plt.get_cmap('binary') 
-        cNorm  = colors.Normalize(vmin=0., vmax=1.)
-        scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cm)
-        colorList = [scalarMap.to_rgba(d['weight']) for (u,v,d) in edges]
+        use_weighting = raw_input('Color according to weight [Y/N]: ')
+        if use_weighting == 'Y':
+            cm = plt.get_cmap('binary') 
+            cNorm  = colors.Normalize(vmin=0., vmax=1.)
+            scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cm)
+            colorList = [scalarMap.to_rgba(d['weight']) for (u,v,d) in edges]
+        else:
+            colorList = 'k'
 
         nx.draw_networkx_nodes(G, pos=nodes_pos, nodelist=input_nodes, node_color='white', alpha=1., edge_color='white')
-        nx.draw_networkx_nodes(G, pos=nodes_pos, nodelist=merge_nodes, node_color='red', alpha=0.8, node_size=20)
+        nx.draw_networkx_nodes(G, pos=nodes_pos, nodelist=merge_nodes, node_color='blue', alpha=0.8, node_size=20)
         nx.draw_networkx_nodes(G, pos=nodes_pos, nodelist=aggregate_nodes, node_color='red', alpha=0.8, node_size=80)
         nx.draw_networkx_edges(G, pos=nodes_pos, edge_color=colorList, edgelist=edges)
         nx.draw_networkx_labels(G,pos=nodes_pos,labels=nodes_labels,font_family='sans-serif')
+        plt.axis('off')
         figname = raw_input('Save to: ')
-        plt.savefig(figname)
+        if figname[-3:] == "pdf":
+            plt.savefig(figname, type='pdf')
+        else:
+            plt.savefig(figname)
         plt.close()
         G.clear()
 
