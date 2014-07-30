@@ -51,7 +51,8 @@ def create_padded_batch(state, x, y, return_dict=False):
     # Similar length for all target sequences
     my = numpy.minimum(state['seqlen'], max([len(xx) for xx in y[0]]))+1
     # Just batch size
-    n = state['bs'] # FIXME: may become inefficient later with a large minibatch
+    #n = state['bs'] # FIXME: may become inefficient later with a large minibatch
+    n = x[0].shape[0]
 
     X = numpy.zeros((mx, n), dtype='int64')
     Y0 = numpy.zeros((my, n), dtype='int64')
@@ -121,11 +122,6 @@ def create_padded_batch(state, x, y, return_dict=False):
     logger.debug("X shape {}, Y shape {}, Xmask mean {}, Ymask mean {}".format(
         X.shape, Y.shape, Xmask.mean(), Ymask.mean()))
 
-    if n == 1:
-        X = X[:,0]
-        Y = Y[:,0]
-        Xmask = Xmask[:,0]
-        Ymask = Ymask[:,0]
     if return_dict:
         # Are Y and Y0 different?
         return {'x' : X, 'x_mask' : Xmask,

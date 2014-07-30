@@ -5,6 +5,7 @@ import cPickle
 import traceback
 import logging
 import time
+import sys
 
 import numpy
 
@@ -107,6 +108,17 @@ class BeamSearch(object):
                     fin_costs.append(new_costs[i])
             states = map(lambda x : x[indices], new_states)
 
+        # Dirty tricks to obtain any translation
+        if not len(fin_trans):
+            if ignore_unk:
+                logger.warning("Did not manage without UNK")
+                return self.search(seq, n_samples, False, minlen)
+            elif n_samples < 500:
+                logger.warning("Still no translations: try beam size {}".format(n_samples * 2))
+                return self.search(seq, n_samples * 2, False, minlen)
+            else:
+                logger.error("Translation failed")
+
         return fin_trans, fin_costs
 
 def indices_to_words(i2w, seq):
@@ -132,6 +144,7 @@ def sample(lm_model, seq, n_samples,
             sentences.append(" ".join(sen))
             if verbose:
                 print "{}: {}".format(costs[i], sentences[-1])
+        return sentences, costs, trans
     elif sampler:
         sentences = []
         all_probs = []
@@ -157,10 +170,10 @@ def sample(lm_model, seq, n_samples,
             for pidx in sprobs:
                 print "{}: {} {} {}".format(pidx, -costs[pidx], all_probs[pidx], sentences[pidx])
             print
+        return sentences, costs
     else:
         raise Exception("I don't know what to do")
 
-    return sentences, costs
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -229,9 +242,10 @@ def main():
             if args.verbose:
                 print "Translation:", trans[best]
             total_cost += costs[best]
-            if i % 100 == 0 and i > 0:
+            if i % 100 == 0:
+                sys.stdout.flush()
                 logger.debug("Current speed is {} per sentence".
-                        format((time.time() - start_time) / i))
+                        format((time.time() - start_time) / (i + 1)))
         print "Total cost of the translations: {}".format(total_cost)
 
         fsrc.close()
@@ -251,7 +265,7 @@ def main():
                 traceback.print_exc()
                 continue
 
-            trans, costs = sample(lm_model, seq, n_samples, sampler=sampler,
+            sample(lm_model, seq, n_samples, sampler=sampler,
                     beam_search=beam_search, normalize=args.normalize,
                     alpha=alpha, verbose=True)
 
