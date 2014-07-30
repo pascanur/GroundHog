@@ -194,9 +194,55 @@ def prototype_sentence_state():
 
     return state
 
+def prototype_phrase_lstm_state():
+    state = prototype_state()
+    state['enc_rec_layer'] = 'LSTMLayer'
+    state['enc_rec_gating'] = False
+    state['enc_rec_reseting'] = False
+    state['dec_rec_layer'] = 'LSTMLayer'
+    state['dec_rec_gating'] = False
+    state['dec_rec_reseting'] = False
+    state['dim_mult'] = 4
+
+    state['prefix'] = 'phrase_lstm_'
+    return state
+
 def prototype_autoenc_state():
     state = prototype_sentence_state()
     state['target'] = ["/data/lisatmp3/bahdanau/mt/binarized_text.shuffled.en.h5"]
     state['indx_word_target'] = state['indx_word']
     state['word_indx_trgt'] = state['word_indx']
+    return state
+
+def prototype_phrase_en_zn_state():
+    state = prototype_state()
+
+    #state['target'] = ["/u/chokyun/tmp3/hal/phrase-table.in.shuf.en.h5"]
+    #state['source'] = ["/u/chokyun/tmp3/hal/phrase-table.in.shuf.zh.h5"]
+    #state['indx_word_target'] = "/u/chokyun/tmp3/hal/train.in.en.indict.pkl"
+    #state['indx_word'] = "/u/chokyun/tmp3/hal/train.in.zh.indict.pkl"
+    #state['word_indx_trgt'] = "/u/chokyun/tmp3/hal/train.in.en.dict.pkl"
+    #state['word_indx'] = "/u/chokyun/tmp3/hal/train.in.zh.dict.pkl"
+
+    state['target'] = ["/u/chokyun/tmp3/hal/phrase-table.out.shuf.en.h5"]
+    state['source'] = ["/u/chokyun/tmp3/hal/phrase-table.out.shuf.zh.h5"]
+    state['indx_word_target'] = "/u/chokyun/tmp3/hal/train.out.en.indict.pkl"
+    state['indx_word'] = "/u/chokyun/tmp3/hal/train.out.zh.indict.pkl"
+    state['word_indx_trgt'] = "/u/chokyun/tmp3/hal/train.out.en.dict.pkl"
+    state['word_indx'] = "/u/chokyun/tmp3/hal/train.out.zh.dict.pkl"
+
+    state['null_sym_source'] = 15000
+    state['null_sym_target'] = 15000
+
+    state['n_sym_source'] = state['null_sym_source'] + 1
+    state['n_sym_target'] = state['null_sym_target'] + 1
+
+    state['seqlen'] = 50
+
+    state['dim'] = 1000
+    state['rank_n_approx'] = 620
+    state['bs']  = 80
+
+    state['prefix'] = 'phrase_en_zh_'
+
     return state
