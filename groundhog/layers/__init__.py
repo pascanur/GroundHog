@@ -1,4 +1,6 @@
-from rec_layers import RecurrentLayer, \
+from rec_layers import  \
+        LSTMLayer, \
+        RecurrentLayer, \
         RecurrentMultiLayer, \
         RecurrentMultiLayerInp, \
         RecurrentMultiLayerShortPath, \

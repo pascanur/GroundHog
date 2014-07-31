@@ -200,3 +200,22 @@ def prototype_autoenc_state():
     state['indx_word_target'] = state['indx_word']
     state['word_indx_trgt'] = state['word_indx']
     return state
+
+def prototype_lstm_state():
+    state = prototype_state()
+
+    state['enc_rec_layer'] = 'LSTMLayer'
+    state['enc_rec_gating'] = False
+    state['enc_rec_reseting'] = False
+    state['enc_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
+    state['enc_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
+
+    state['dec_rec_layer'] = 'LSTMLayer'
+    state['dec_rec_gating'] = False
+    state['dec_rec_reseting'] = False
+    state['dec_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
+    state['dec_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
+
+    state['dim_mult'] = 4
+
+    return state
