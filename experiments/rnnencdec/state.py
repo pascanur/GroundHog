@@ -142,7 +142,7 @@ def prototype_state():
 
     # Data iterator options
     state['reset'] = -1
-    state['shuffle'] = True
+    state['shuffle'] = False
     state['cache_size'] = 0
 
     # Frequency of training error reports (in number of batches)
