@@ -341,8 +341,11 @@ class Encoder(EncoderDecoderBase):
 
         self.num_levels = self.state['encoder_stack']
         
+        # support multiple gating/memory units
         if 'dim_mult' not in self.state:
             self.state['dim_mult'] = 1.
+        if 'hid_mult' not in self.state:
+            self.state['hid_mult'] = 1.
 
     def create_layers(self):
         """ Create all elements of Encoder's computation graph"""
@@ -511,7 +514,7 @@ class Decoder(EncoderDecoderBase):
                 self.initializers[level] = MultiLayer(
                     self.rng,
                     n_in=self.state['dim'],
-                    n_hids=[self.state['dim']],
+                    n_hids=[self.state['dim'] * self.state['hid_mult']],
                     activation=[_prefix(self.state,'dec','activ')],
                     bias_scale=[self.state['bias']],
                     name='dec_initializer_%d'%level,
@@ -728,14 +731,8 @@ class Decoder(EncoderDecoderBase):
         # So what we do is discard the last one and prepend the initial one.
         if mode == Decoder.EVALUATION:
             for level in range(self.num_levels):
-                if hidden_layers[level].out.shape[-1] != init_states[level].out.shape[-1]:
-                    istate = TT.zeros_like(init_states[level].out)
-                    istate = TT.concatenate([init_states[level].out, istate], axis=istate.shape.shape[0]-1)
-                else:
-                    istate = init_states[level].out
-
                 hidden_layers[level].out = TT.concatenate([
-                    TT.shape_padleft(istate),
+                    TT.shape_padleft(init_states[level].out),
                         hidden_layers[level].out])[:-1]
 
         # The output representation to be fed in softmax.

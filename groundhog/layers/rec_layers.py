@@ -1509,15 +1509,6 @@ class LSTMLayer(Layer):
                 init_state = TT.alloc(floatX(0), batch_size, self.n_hids * 2)
             else:
                 init_state = TT.alloc(floatX(0), self.n_hids * 2)
-        else:
-            if not isinstance(batch_size, int) or batch_size != 1:
-                init_state0 = TT.alloc(floatX(0), batch_size, self.n_hids * 2)
-                init_state0 = TT.set_subtensor(init_state0[:, :self.n_hids], init_state)
-                init_state = init_state0
-            else:
-                init_state0 = TT.alloc(floatX(0), self.n_hids * 2)
-                init_state0 = TT.set_subtensor(init_state0[:self.n_hids], init_state)
-                init_state = init_state0
 
         if mask:
             inps = [state_below, mask]

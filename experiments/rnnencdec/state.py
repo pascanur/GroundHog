@@ -217,5 +217,6 @@ def prototype_lstm_state():
     state['dec_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
 
     state['dim_mult'] = 4
+    state['hid_mult'] = 2
 
     return state
