@@ -344,14 +344,8 @@ class MainLoop(object):
                 self.step += 1
                 self.timings['step'] = self.step
                 self.timings['next_offset'] = self.train_data.next_offset
-                print "took {}".format(time.time() - st)
             except KeyboardInterrupt:
-                self.state['wholetime'] = float(time.time() - start_time)
-                self.save()
-                if self.channel:
-                    self.channel.save()
-                print 'Took', (time.time() - start_time)/60., 'min'
-                raise
+                break
 
         self.state['wholetime'] = float(time.time() - start_time)
         if self.valid_data is not None:
@@ -360,3 +354,6 @@ class MainLoop(object):
         if self.channel:
             self.channel.save()
         print 'Took', (time.time() - start_time)/60., 'min'
+        avg_step = self.timings['time_step'].mean()
+        print "Average step took {}".format(avg_step)
+        print "That amounts to {} sentences in a day".format(1 / avg_step * 86400 * self.state['bs'])
