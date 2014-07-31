@@ -1369,11 +1369,11 @@ class LSTMLayer(Layer):
         if to == 'cell':
             offset = 0
         elif to == 'input':
-            offset = self.n_hids
+            offset = 1 * self.n_hids
         elif to == 'output':
-            offset = self.n_hids
+            offset = 2 * self.n_hids
         elif to == 'forget':
-            offset = self.n_hids
+            offset = 3 * self.n_hids
         else:
             raise Warning('Unknown gate/cell types')
 
