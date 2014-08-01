@@ -368,7 +368,8 @@ class Encoder(EncoderDecoderBase):
                 activation=eval(self.state['unary_activ']),
                 name="enc_repr_calc")
 
-    def build_encoder(self, x, x_mask, use_noise):
+    def build_encoder(self, x, x_mask, use_noise,
+            return_hidden_layers=False):
         """Create the computational graph of the RNN Encoder
 
         :param x: input variable, either vector of word indices or
@@ -421,6 +422,8 @@ class Encoder(EncoderDecoderBase):
                     gater_below=none_if_zero(update_signals[level]),
                     reseter_below=none_if_zero(reset_signals[level]),
                     use_noise=use_noise))
+        if return_hidden_layers:
+            return hidden_layers
 
         # If we no stack of RNN but only a usual one,
         # then the last hidden state is used as a representation.
