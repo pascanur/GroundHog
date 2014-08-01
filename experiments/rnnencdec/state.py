@@ -192,7 +192,7 @@ def prototype_sentence_state():
 
     state['seqlen'] = 30
 
-    state['dim'] = 2000
+    state['dim'] = 1000
     state['rank_n_approx'] = 620
     state['bs']  = 80
 
