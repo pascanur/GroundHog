@@ -32,6 +32,8 @@ def prototype_state():
 
     # This for the hidden state initilization
     state['bias_code'] = True
+    # This for influence on decoding from representation
+    state['decoding_inputs'] = True
 
     # This is for the input -> output shortcut
     state['avg_word'] = False
@@ -184,9 +186,9 @@ def prototype_sentence_state():
     state['n_sym_source'] = state['null_sym_source'] + 1
     state['n_sym_target'] = state['null_sym_target'] + 1
 
-    state['seqlen'] = 50
+    state['seqlen'] = 30
 
-    state['dim'] = 2000
+    state['dim'] = 1000
     state['rank_n_approx'] = 620
     state['bs']  = 80
 

@@ -198,6 +198,12 @@ class ReplicateLayer(Layer):
         self.out = a * b
         return self.out
 
+class ZeroLayer(Layer):
+
+    def fprop(self, x):
+        self.out = TT.zeros(x.shape)
+        return self.out
+
 def none_if_zero(x):
     if x == 0:
         return None
@@ -339,7 +345,7 @@ class Encoder(EncoderDecoderBase):
         self.skip_init = skip_init
 
         self.num_levels = self.state['encoder_stack']
-        
+
         # support multiple gating/memory units
         if 'dim_mult' not in self.state:
             self.state['dim_mult'] = 1.
@@ -418,10 +424,6 @@ class Encoder(EncoderDecoderBase):
             # input, reset and update signals from below.
             # All the shapes: (n_words, dim)
             if level > 0:
-                #if hidden_layers[-1].out.ndim == 3:
-                #    hidden_layers[-1].out = hidden_layers[-1].out[:,:,:self.state['dim']]
-                #else:
-                #    hidden_layers[-1].out = hidden_layers[-1].out[:,:self.state['dim']]
                 input_signals[level] += self.inputers[level](hidden_layers[-1])
                 update_signals[level] += self.updaters[level](hidden_layers[-1])
                 reset_signals[level] += self.reseters[level](hidden_layers[-1])
@@ -471,7 +473,7 @@ class Decoder(EncoderDecoderBase):
         self.skip_init = skip_init
 
         self.num_levels = self.state['decoder_stack']
-        
+
         if 'dim_mult' not in self.state:
             self.state['dim_mult'] = 1.
 
@@ -492,7 +494,7 @@ class Decoder(EncoderDecoderBase):
 
     def _create_initialization_layers(self):
         logger.debug("_create_initialization_layers")
-        self.initializers = [lambda x : None] * self.num_levels
+        self.initializers = [ZeroLayer()] * self.num_levels
         if self.state['bias_code']:
             for level in range(self.num_levels):
                 self.initializers[level] = MultiLayer(
@@ -514,24 +516,25 @@ class Decoder(EncoderDecoderBase):
                 n_in=self.state['dim'],
                 n_hids=self.state['dim'] * self.state['dim_mult'],
                 activation=['lambda x:x']))
-        for level in range(self.num_levels):
-            self.decode_inputers[level] = MultiLayer(
-                self.rng,
-                name='dec_dec_inputter_{}'.format(level),
-                learn_bias=False,
-                **decoding_kwargs)
-            if _prefix(self.state,'dec','rec_gating'):
-                self.decode_updaters[level] = MultiLayer(
+        if self.state['decoding_inputs']:
+            for level in range(self.num_levels):
+                self.decode_inputers[level] = MultiLayer(
                     self.rng,
-                    name='dec_dec_updater_{}'.format(level),
+                    name='dec_dec_inputter_{}'.format(level),
                     learn_bias=False,
                     **decoding_kwargs)
-            if _prefix(self.state,'dec','rec_reseting'):
-                self.decode_reseters[level] = MultiLayer(
-                    self.rng,
-                    name='dec_dec_reseter_{}'.format(level),
-                    learn_bias=False,
-                    **decoding_kwargs)
+                if _prefix(self.state,'dec','rec_gating'):
+                    self.decode_updaters[level] = MultiLayer(
+                        self.rng,
+                        name='dec_dec_updater_{}'.format(level),
+                        learn_bias=False,
+                        **decoding_kwargs)
+                if _prefix(self.state,'dec','rec_reseting'):
+                    self.decode_reseters[level] = MultiLayer(
+                        self.rng,
+                        name='dec_dec_reseter_{}'.format(level),
+                        learn_bias=False,
+                        **decoding_kwargs)
 
     def _create_readout_layers(self):
         logger.debug("_create_readout_layers")
@@ -680,10 +683,6 @@ class Decoder(EncoderDecoderBase):
         hidden_layers = []
         for level in range(self.num_levels):
             if level > 0:
-                #if hidden_layers[level-1].out.ndim == 3:
-                #    hidden_layers[level-1].out = hidden_layers[level-1].out[:,:,:self.state['dim']]
-                #else:
-                #    hidden_layers[level-1].out = hidden_layers[level-1].out[:,:self.state['dim']]
                 input_signals[level] += self.inputers[level](hidden_layers[level - 1])
                 update_signals[level] += self.updaters[level](hidden_layers[level - 1])
                 reset_signals[level] += self.reseters[level](hidden_layers[level - 1])
