@@ -186,7 +186,7 @@ def prototype_sentence_state():
     state['n_sym_source'] = state['null_sym_source'] + 1
     state['n_sym_target'] = state['null_sym_target'] + 1
 
-    state['seqlen'] = 50
+    state['seqlen'] = 30
 
     state['dim'] = 2000
     state['rank_n_approx'] = 620
