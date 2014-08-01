@@ -344,7 +344,7 @@ class Encoder(EncoderDecoderBase):
         self.skip_init = skip_init
 
         self.num_levels = self.state['encoder_stack']
-        
+
         # support multiple gating/memory units
         if 'dim_mult' not in self.state:
             self.state['dim_mult'] = 1.
@@ -423,10 +423,6 @@ class Encoder(EncoderDecoderBase):
             # input, reset and update signals from below.
             # All the shapes: (n_words, dim)
             if level > 0:
-                #if hidden_layers[-1].out.ndim == 3:
-                #    hidden_layers[-1].out = hidden_layers[-1].out[:,:,:self.state['dim']]
-                #else:
-                #    hidden_layers[-1].out = hidden_layers[-1].out[:,:self.state['dim']]
                 input_signals[level] += self.inputers[level](hidden_layers[-1])
                 update_signals[level] += self.updaters[level](hidden_layers[-1])
                 reset_signals[level] += self.reseters[level](hidden_layers[-1])
@@ -476,7 +472,7 @@ class Decoder(EncoderDecoderBase):
         self.skip_init = skip_init
 
         self.num_levels = self.state['decoder_stack']
-        
+
         if 'dim_mult' not in self.state:
             self.state['dim_mult'] = 1.
 
@@ -686,10 +682,6 @@ class Decoder(EncoderDecoderBase):
         hidden_layers = []
         for level in range(self.num_levels):
             if level > 0:
-                #if hidden_layers[level-1].out.ndim == 3:
-                #    hidden_layers[level-1].out = hidden_layers[level-1].out[:,:,:self.state['dim']]
-                #else:
-                #    hidden_layers[level-1].out = hidden_layers[level-1].out[:,:self.state['dim']]
                 input_signals[level] += self.inputers[level](hidden_layers[level - 1])
                 update_signals[level] += self.updaters[level](hidden_layers[level - 1])
                 reset_signals[level] += self.reseters[level](hidden_layers[level - 1])
