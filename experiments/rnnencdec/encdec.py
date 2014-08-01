@@ -119,8 +119,6 @@ def create_padded_batch(state, x, y, return_dict=False):
     Ymask = Ymask[:,valid_inputs.nonzero()[0]]
     if len(valid_inputs.nonzero()[0]) <= 0:
         return None
-    logger.debug("X shape {}, Y shape {}, Xmask mean {}, Ymask mean {}".format(
-        X.shape, Y.shape, Xmask.mean(), Ymask.mean()))
 
     if return_dict:
         # Are Y and Y0 different?
@@ -204,7 +202,6 @@ def none_if_zero(x):
     return x
 
 def dbg_sum(text, x):
-    return x
     if not isinstance(x, TT.TensorVariable):
         x.out = theano.printing.Print(text, attrs=['sum'])(x.out)
         return x
@@ -212,7 +209,6 @@ def dbg_sum(text, x):
         return theano.printing.Print(text, attrs=['sum'])(x)
 
 def dbg_hook(hook, x):
-    return x
     if not isinstance(x, TT.TensorVariable):
         x.out = theano.printing.Print(global_fn=hook)(x.out)
         return x
@@ -405,14 +401,6 @@ class Encoder(EncoderDecoderBase):
             update_signals.append(self.update_embedders[level](approx_embeddings))
             reset_signals.append(self.reset_embedders[level](approx_embeddings))
 
-        def inp_hook(op, x):
-            if x.ndim == 2:
-                values = x.sum(1).flatten()
-            else:
-                values = x.sum()
-            logger.debug("Input signal: {}".format(values))
-        input_signals[-1] = dbg_hook(inp_hook, input_signals[-1])
-
         # Hidden layers.
         # Shape in case of matrix input: (max_seq_len, batch_size, dim)
         # Shape in case of vector input: (seq_len, dim)
@@ -433,13 +421,6 @@ class Encoder(EncoderDecoderBase):
                     gater_below=none_if_zero(update_signals[level]),
                     reseter_below=none_if_zero(reset_signals[level]),
                     use_noise=use_noise))
-        def hid_hook(op, x):
-            if x.ndim == 3:
-                values = x.sum(2).flatten()
-            else:
-                values = x.sum()
-            logger.debug("Encoder hiddens: {}".format(values))
-        hidden_layers[-1] = dbg_hook(hid_hook, hidden_layers[-1])
 
         # If we no stack of RNN but only a usual one,
         # then the last hidden state is used as a representation.
@@ -631,7 +612,6 @@ class Decoder(EncoderDecoderBase):
         #   (max_seq_len, batch_size, dim)
         # Shape if mode != evaluation
         #   (n_samples, dim)
-        c = dbg_hook(lambda _, x : logger.debug("Representation: {}".format(x.sum())), c)
         replicated_c = ReplicateLayer(y.shape[0])(c)
 
         # Low rank embeddings of all the input words.
@@ -697,14 +677,6 @@ class Decoder(EncoderDecoderBase):
                             nsteps=y.shape[0]))
                         ))
 
-            def hid_hook(op, x):
-                if x.ndim == 3:
-                    values = x.sum(2).flatten()
-                else:
-                    values = x.sum()
-                logger.debug("Decoder hiddens: {}".format(values))
-            hidden_layers[-1] = dbg_hook(hid_hook, hidden_layers[-1])
-
         # In hidden_layers we do no have the initial state, but we need it.
         # Instead of it we have the last one, which we do not need.
         # So what we do is discard the last one and prepend the initial one.
@@ -750,14 +722,6 @@ class Decoder(EncoderDecoderBase):
         for fun in self.output_nonlinearities:
             readout = fun(readout)
 
-        def readout_hook(op, x):
-            if x.ndim == 2:
-                values = x.sum(1).flatten()
-            else:
-                values = x.sum()
-            logger.debug("Readouts: {}".format(values))
-        readout = dbg_hook(readout_hook, readout)
-
         if mode == Decoder.SAMPLING:
             sample = self.output_layer.get_sample(
                     state_below=readout,
@@ -792,7 +756,7 @@ class Decoder(EncoderDecoderBase):
         assert prev_word.ndim == 1
         # skip the previous word log probability
         assert next(args).ndim == 1
-        prev_hidden_states = [dbg_sum("PrevHidden:", next(args)) for k in range(self.num_levels)]
+        prev_hidden_states = [next(args) for k in range(self.num_levels)]
         assert prev_hidden_states[0].ndim == 2
         c = next(args)
         assert c.ndim == 1
@@ -812,7 +776,6 @@ class Decoder(EncoderDecoderBase):
         states = [TT.zeros(shape=(n_samples,), dtype='int64'),
                 TT.zeros(shape=(n_samples,), dtype='float32')]\
                 + [ReplicateLayer(n_samples)(init(c).out).out for init in self.initializers]
-        dbg_sum("Init:", states[2])
         params = [c, T]
         outputs, updates = theano.scan(self.sampling_step,
                 outputs_info=states,

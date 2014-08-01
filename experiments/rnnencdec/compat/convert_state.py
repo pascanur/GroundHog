@@ -1,6 +1,6 @@
 import argparse
 import numpy
-import cPickle 
+import cPickle
 
 def separate_enc_dec_rec_layers(state):
     state['enc_rec_layer'] = state['rec_layer']

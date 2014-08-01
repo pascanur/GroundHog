@@ -142,7 +142,7 @@ def prototype_state():
 
     # Data iterator options
     state['reset'] = -1
-    state['shuffle'] = True
+    state['shuffle'] = False
     state['cache_size'] = 0
 
     # Frequency of training error reports (in number of batches)
@@ -171,12 +171,12 @@ def prototype_state():
 def prototype_sentence_state():
     state = prototype_state()
 
-    state['target'] = ["/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.fr.h5"]
-    state['source'] = ["/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.en.h5"]
-    state['indx_word'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/ivocab_source.pkl"
-    state['indx_word_target'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/ivocab_target.pkl"
-    state['word_indx'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/vocab.en.pkl"
-    state['word_indx_trgt'] = "/u/chokyun/tmp3/mt/vocab.30k/bitexts.selected/vocab.fr.pkl"
+    state['target'] = ["/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.fr.h5"]
+    state['source'] = ["/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.en.h5"]
+    state['indx_word'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/ivocab_source.pkl"
+    state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/ivocab_target.pkl"
+    state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/vocab.en.pkl"
+    state['word_indx_trgt'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/vocab.fr.pkl"
 
     state['null_sym_source'] = 30000
     state['null_sym_target'] = 30000

@@ -39,6 +39,11 @@ def main():
             state.update(cPickle.load(src))
     state.update(eval("dict({})".format(args.changes)))
 
+    state['sort_k_batches'] = 1
+    state['shuffle'] = False
+    state['use_infinite_loop'] = False
+    state['force_enc_repr_cpu'] = False
+
     logging.basicConfig(level=getattr(logging, state['level']), format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
 
     rng = numpy.random.RandomState(state['seed'])
@@ -52,8 +57,6 @@ def main():
 
         state['source'] = [args.src]
         state['target'] = [args.trg]
-        state['shuffle'] = False
-        state['use_infinite_loop'] = False
         data_iter = get_batch_iterator(state, rng)
         data_iter.start(0)
         score_file = open(args.scores, "w")

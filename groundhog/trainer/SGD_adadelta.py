@@ -130,8 +130,7 @@ class SGD(object):
         self.train_fn = theano.function(
             [], outs, name='train_function',
             updates = updates,
-            givens = zip(model.inputs, loc_data),
-            profile=self.state['profile'])
+            givens = zip(model.inputs, loc_data))
         logger.debug('took {}'.format(time.time() - st))
 
         self.lr = numpy.float32(1.)
@@ -149,8 +148,7 @@ class SGD(object):
         self.update_fn = theano.function(
             [], [], name='update_function',
             allow_input_downcast=True,
-            updates = updates,
-            profile=self.state['profile'])
+            updates = updates)
 
         self.old_cost = 1e20
         self.schedules = model.get_schedules()
