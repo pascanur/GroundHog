@@ -27,6 +27,10 @@ def prototype_state():
     state['n_sym_target'] = state['null_sym_target'] + 1
     state['unk_sym_target'] = 1
 
+    # If True, transcription consisting from forward and hidden states
+    # will be generated and used for translation.
+    state['backward'] = True
+
     # This is for predicting the next target from the current one
     state['bigram'] = True
 
