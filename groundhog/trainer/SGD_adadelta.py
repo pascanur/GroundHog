@@ -27,7 +27,8 @@ class SGD(object):
     def __init__(self,
                  model,
                  state,
-                 data):
+                 data,
+                 indexed_params = None):
         """
         Parameters:
             :param model:
@@ -47,6 +48,7 @@ class SGD(object):
             state['adarho'] = 0.96
         if 'adaeps' not in state:
             state['adaeps'] = 1e-6
+        self.indexed_params = indexed_params
 
         #####################################
         # Step 0. Constructs shared variables
@@ -83,6 +85,9 @@ class SGD(object):
         ###################################
         # Step 1. Compile training function
         ###################################
+        if indexed_params:
+            input_indices = [TT.lvector(p.name+'_unique') for p in indexed_params]
+
         logger.debug('Constructing grad function')
         loc_data = self.gdata
         self.prop_exprs = [x[1] for x in model.properties]
@@ -123,12 +128,27 @@ class SGD(object):
 
         # grad2
         gnorm2_up = [rho * gn2 + (1. - rho) * (g ** 2.) for gn2,g in zip(self.gnorm2, gs)]
+        if indexed_params:
+            index_ptr = 0
+            gnorm2_up_new = []
+            for gn2,gn2_up,g,p in zip(self.gnorm2, gnorm2_up, gs, self.model.params):
+                if p in indexed_params:
+                    gn2_up = TT.set_subtensor(gn2[input_indices[index_ptr]], 
+                            rho * gn2[input_indices[index_ptr]] + (1. - rho) * (g[index_ptr] ** 2.))
+                    index_ptr += 1
+                gnorm2_up_new.append(gn2_up)
+            gnorm2_up = gnorm2_up_new
+
         updates = updates + zip(self.gnorm2, gnorm2_up)
+
 
         logger.debug('Compiling grad function')
         st = time.time()
+        inp = []
+        if indexed_params:
+            inp = input_indices
         self.train_fn = theano.function(
-            [], outs, name='train_function',
+            inp, outs, name='train_function',
             updates = updates,
             givens = zip(model.inputs, loc_data))
         logger.debug('took {}'.format(time.time() - st))
@@ -139,14 +159,42 @@ class SGD(object):
                 zip(model.params, self.gs, self.gnorm2, self.dnorm2)]
 
         updates = zip(model.params, new_params)
+        if indexed_params:
+            index_ptr = 0
+            new_params_new = []
+            for np,p,g,gn2,dn2 in zip(new_params, model.params, self.gs, self.gnorm2, self.dnorm2):
+                if p in indexed_params:
+                    np = TT.set_subtensor(p[input_indices[index_ptr]],
+                            p[input_indices[index_ptr]] -
+                            (TT.sqrt(dn2[input_indices[index_ptr]] + eps) / 
+                                TT.sqrt(gn2[input_indices[index_ptr]] + eps)) * 
+                            g[input_indices[index_ptr]])
+                    index_ptr += 1
+                new_params_new.append(np)
+            updates = zip(model.params, new_params_new)
+
         # d2
-        d2_up = [(dn2, rho * dn2 + (1. - rho) *
+        dnorm2_up = [(dn2, rho * dn2 + (1. - rho) *
             (((TT.sqrt(dn2 + eps) / TT.sqrt(gn2 + eps)) * g) ** 2.))
             for dn2, gn2, g in zip(self.dnorm2, self.gnorm2, self.gs)]
-        updates = updates + d2_up
+        if indexed_params:
+            index_ptr = 0
+            dnorm2_up_new = []
+            for dn2,dn2_up,g,p in zip(self.dnorm2, dnorm2_up, gs, self.model.params):
+                if p in indexed_params:
+                    dn2_up = (dn2, TT.set_subtensor(dn2[input_indices[index_ptr]],
+                        rho * dn2[input_indices[index_ptr]] + (1. - rho) *
+                        (((TT.sqrt(dn2[input_indices[index_ptr]] + eps) / 
+                            TT.sqrt(gn2[input_indices[index_ptr]] + eps)) * g) ** 2.)))
+                    index_ptr += 1
+                dnorm2_up_new.append(dn2_up)
+        updates = updates + dnorm2_up
 
+        inp = []
+        if indexed_params:
+            inp = input_indices
         self.update_fn = theano.function(
-            [], [], name='update_function',
+            inp, [], name='update_function',
             allow_input_downcast=True,
             updates = updates)
 
@@ -179,10 +227,16 @@ class SGD(object):
                 gdata.set_value(data, borrow=True)
         # Run the trianing function
         g_st = time.time()
-        rvals = self.train_fn()
+        if self.indexed_params:
+            rvals = self.train_fn(numpy.unique(batch['x'].flatten()))
+        else:
+            rvals = self.train_fn()
         for schedule in self.schedules:
             schedule(self, rvals[-1])
-        self.update_fn()
+        if self.indexed_params:
+            self.update_fn(numpy.unique(batch['x'].flatten()))
+        else:
+            self.update_fn()
         g_ed = time.time()
         self.state['lr'] = float(self.lr)
         cost = rvals[-1]

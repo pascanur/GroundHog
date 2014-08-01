@@ -11,6 +11,7 @@ from groundhog.layers import\
         Layer,\
         MultiLayer,\
         SoftmaxLayer,\
+        LSTMLayer, \
         RecurrentLayer,\
         RecursiveConvolutionalLayer,\
         UnaryOp,\
@@ -263,7 +264,7 @@ class EncoderDecoderBase(object):
         embedder_kwargs = dict(self.default_kwargs)
         embedder_kwargs.update(dict(
             n_in=self.state['rank_n_approx'],
-            n_hids=[self.state['dim']],
+            n_hids=[self.state['dim'] * self.state['dim_mult']],
             activation=['lambda x:x']))
         for level in range(self.num_levels):
             self.input_embedders[level] = MultiLayer(
@@ -288,7 +289,7 @@ class EncoderDecoderBase(object):
         inter_level_kwargs = dict(self.default_kwargs)
         inter_level_kwargs.update(
                 n_in=self.state['dim'],
-                n_hids=self.state['dim'],
+                n_hids=self.state['dim'] * self.state['dim_mult'],
                 activation=['lambda x:x'])
 
         self.inputers = [0] * self.num_levels
@@ -337,6 +338,12 @@ class Encoder(EncoderDecoderBase):
         self.skip_init = skip_init
 
         self.num_levels = self.state['encoder_stack']
+        
+        # support multiple gating/memory units
+        if 'dim_mult' not in self.state:
+            self.state['dim_mult'] = 1.
+        if 'hid_mult' not in self.state:
+            self.state['hid_mult'] = 1.
 
     def create_layers(self):
         """ Create all elements of Encoder's computation graph"""
@@ -410,6 +417,10 @@ class Encoder(EncoderDecoderBase):
             # input, reset and update signals from below.
             # All the shapes: (n_words, dim)
             if level > 0:
+                #if hidden_layers[-1].out.ndim == 3:
+                #    hidden_layers[-1].out = hidden_layers[-1].out[:,:,:self.state['dim']]
+                #else:
+                #    hidden_layers[-1].out = hidden_layers[-1].out[:,:self.state['dim']]
                 input_signals[level] += self.inputers[level](hidden_layers[-1])
                 update_signals[level] += self.updaters[level](hidden_layers[-1])
                 reset_signals[level] += self.reseters[level](hidden_layers[-1])
@@ -429,7 +440,12 @@ class Encoder(EncoderDecoderBase):
         # Return value shape in case of vector input:
         #   (dim,)
         if self.num_levels == 1 or self.state['take_top']:
-            return LastState()(hidden_layers[-1])
+            c = LastState()(hidden_layers[-1])
+            if c.out.ndim == 2:
+                c.out = c.out[:,:self.state['dim']]
+            else:
+                c.out = c.out[:self.state['dim']]
+            return c
 
         # If we have a stack of RNN, then their last hidden states
         # are combined with a maxout layer.
@@ -454,6 +470,9 @@ class Decoder(EncoderDecoderBase):
         self.skip_init = skip_init
 
         self.num_levels = self.state['decoder_stack']
+        
+        if 'dim_mult' not in self.state:
+            self.state['dim_mult'] = 1.
 
     def create_layers(self):
         """ Create all elements of Decoder's computation graph"""
@@ -478,7 +497,7 @@ class Decoder(EncoderDecoderBase):
                 self.initializers[level] = MultiLayer(
                     self.rng,
                     n_in=self.state['dim'],
-                    n_hids=[self.state['dim']],
+                    n_hids=[self.state['dim'] * self.state['hid_mult']],
                     activation=[_prefix(self.state,'dec','activ')],
                     bias_scale=[self.state['bias']],
                     name='dec_initializer_%d'%level,
@@ -492,7 +511,7 @@ class Decoder(EncoderDecoderBase):
         decoding_kwargs = dict(self.default_kwargs)
         decoding_kwargs.update(dict(
                 n_in=self.state['dim'],
-                n_hids=self.state['dim'],
+                n_hids=self.state['dim'] * self.state['dim_mult'],
                 activation=['lambda x:x']))
         for level in range(self.num_levels):
             self.decode_inputers[level] = MultiLayer(
@@ -660,6 +679,10 @@ class Decoder(EncoderDecoderBase):
         hidden_layers = []
         for level in range(self.num_levels):
             if level > 0:
+                #if hidden_layers[level-1].out.ndim == 3:
+                #    hidden_layers[level-1].out = hidden_layers[level-1].out[:,:,:self.state['dim']]
+                #else:
+                #    hidden_layers[level-1].out = hidden_layers[level-1].out[:,:self.state['dim']]
                 input_signals[level] += self.inputers[level](hidden_layers[level - 1])
                 update_signals[level] += self.updaters[level](hidden_layers[level - 1])
                 reset_signals[level] += self.reseters[level](hidden_layers[level - 1])
@@ -683,7 +706,7 @@ class Decoder(EncoderDecoderBase):
         if mode == Decoder.EVALUATION:
             for level in range(self.num_levels):
                 hidden_layers[level].out = TT.concatenate([
-                        TT.shape_padleft(init_states[level].out),
+                    TT.shape_padleft(init_states[level].out),
                         hidden_layers[level].out])[:-1]
 
         # The output representation to be fed in softmax.
@@ -698,6 +721,15 @@ class Decoder(EncoderDecoderBase):
                 read_from = init_states[level]
             else:
                 read_from = hidden_layers[level]
+            read_from_var = read_from if type(read_from) == theano.tensor.TensorVariable else read_from.out
+            if read_from_var.ndim == 3:
+                read_from_var = read_from_var[:,:,:self.state['dim']]
+            else:
+                read_from_var = read_from_var[:,:self.state['dim']]
+            if type(read_from) != theano.tensor.TensorVariable:
+                read_from.out = read_from_var
+            else:
+                read_from = read_from_var
             readout += self.hidden_readouts[level](read_from)
         if self.state['bigram']:
             if mode != Decoder.EVALUATION:
