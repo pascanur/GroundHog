@@ -196,6 +196,12 @@ class ReplicateLayer(Layer):
         self.out = a * b
         return self.out
 
+class ZeroLayer(Layer):
+
+    def fprop(self, x):
+        self.out = TT.zeros(x.shape)
+        return self.out
+
 def none_if_zero(x):
     if x == 0:
         return None
@@ -475,7 +481,7 @@ class Decoder(EncoderDecoderBase):
 
     def _create_initialization_layers(self):
         logger.debug("_create_initialization_layers")
-        self.initializers = [lambda x : None] * self.num_levels
+        self.initializers = [ZeroLayer()] * self.num_levels
         if self.state['bias_code']:
             for level in range(self.num_levels):
                 self.initializers[level] = MultiLayer(
@@ -497,24 +503,25 @@ class Decoder(EncoderDecoderBase):
                 n_in=self.state['dim'],
                 n_hids=self.state['dim'],
                 activation=['lambda x:x']))
-        for level in range(self.num_levels):
-            self.decode_inputers[level] = MultiLayer(
-                self.rng,
-                name='dec_dec_inputter_{}'.format(level),
-                learn_bias=False,
-                **decoding_kwargs)
-            if _prefix(self.state,'dec','rec_gating'):
-                self.decode_updaters[level] = MultiLayer(
+        if self.state['decoding_inputs']:
+            for level in range(self.num_levels):
+                self.decode_inputers[level] = MultiLayer(
                     self.rng,
-                    name='dec_dec_updater_{}'.format(level),
+                    name='dec_dec_inputter_{}'.format(level),
                     learn_bias=False,
                     **decoding_kwargs)
-            if _prefix(self.state,'dec','rec_reseting'):
-                self.decode_reseters[level] = MultiLayer(
-                    self.rng,
-                    name='dec_dec_reseter_{}'.format(level),
-                    learn_bias=False,
-                    **decoding_kwargs)
+                if _prefix(self.state,'dec','rec_gating'):
+                    self.decode_updaters[level] = MultiLayer(
+                        self.rng,
+                        name='dec_dec_updater_{}'.format(level),
+                        learn_bias=False,
+                        **decoding_kwargs)
+                if _prefix(self.state,'dec','rec_reseting'):
+                    self.decode_reseters[level] = MultiLayer(
+                        self.rng,
+                        name='dec_dec_reseter_{}'.format(level),
+                        learn_bias=False,
+                        **decoding_kwargs)
 
     def _create_readout_layers(self):
         logger.debug("_create_readout_layers")
