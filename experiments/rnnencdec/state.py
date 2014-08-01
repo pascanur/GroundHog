@@ -32,6 +32,8 @@ def prototype_state():
 
     # This for the hidden state initilization
     state['bias_code'] = True
+    # This for influence on decoding from representation
+    state['decoding_inputs'] = True
 
     # This is for the input -> output shortcut
     state['avg_word'] = False
