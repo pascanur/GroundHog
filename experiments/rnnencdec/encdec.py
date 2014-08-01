@@ -145,7 +145,8 @@ def get_batch_iterator(state, rng):
                 x = numpy.asarray(list(itertools.chain(*map(operator.itemgetter(0), data))))
                 y = numpy.asarray(list(itertools.chain(*map(operator.itemgetter(1), data))))
                 lens = numpy.asarray([map(len, x), map(len, y)])
-                order = numpy.argsort(lens.max(axis=0))
+                order = numpy.argsort(lens.max(axis=0)) if state['sort_k_batches'] > 1 \
+                        else numpy.arange(len(x))
                 for k in range(k_batches):
                     indices = order[k * batch_size:(k + 1) * batch_size]
                     batch = create_padded_batch(state, [x[indices]], [y[indices]],
