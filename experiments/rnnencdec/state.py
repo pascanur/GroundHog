@@ -29,7 +29,8 @@ def prototype_state():
 
     # If True, transcription consisting from forward and hidden states
     # will be generated and used for translation.
-    state['backward'] = True
+    state['backward'] = False
+    state['debug_backward'] = True
 
     # This is for predicting the next target from the current one
     state['bigram'] = True
@@ -69,6 +70,12 @@ def prototype_state():
     state['dec_rec_reseting'] = True
     state['dec_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
     state['dec_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
+
+    state['rec_layer'] = 'RecurrentLayer'
+    state['rec_gating'] = True
+    state['rec_reseting'] = True
+    state['rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
+    state['rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
 
     # Representation from hidden layer
     state['take_top'] = True
