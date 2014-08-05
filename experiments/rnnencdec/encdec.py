@@ -589,7 +589,7 @@ class Decoder(EncoderDecoderBase):
                     self.state['dim'],
                     self.state['n_sym_target'],
                     sparsity=-1,
-                    rank_n_approx=0,
+                    rank_n_approx=self.state['rank_n_approx'],
                     name='dec_softmax',
                     sum_over_time=True,
                     **self.default_kwargs)
