@@ -500,3 +500,11 @@ class MaxPooling(Layer):
 maxpool = MaxPooling()
 maxpool_ntimes = MaxPooling(ntimes=True)
 
+class Concatenate(Layer):
+
+    def __init__(self, axis):
+        self.axis = axis
+
+    def fprop(self, *args):
+        self.out = TT.concatenate(args, axis=self.axis)
+        return self.out
