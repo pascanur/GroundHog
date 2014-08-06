@@ -555,7 +555,7 @@ class Decoder(EncoderDecoderBase):
 
         decoding_kwargs = dict(self.default_kwargs)
         decoding_kwargs.update(dict(
-                n_in=self.state['dim'] * (1 if not self.state['backward'] else 2),
+                n_in=self.state['c_dim'],
                 n_hids=self.state['dim'] * self.state['dim_mult'],
                 activation=['lambda x:x'],
                 learn_bias=False))
@@ -592,7 +592,7 @@ class Decoder(EncoderDecoderBase):
 
         self.repr_readout = MultiLayer(
                 self.rng,
-                n_in=self.state['dim'] * (1 if not self.state['backward'] else 2),
+                n_in=self.state['c_dim'],
                 learn_bias=False,
                 name='{}_repr_readout'.format(self.prefix),
                 **readout_kwargs)
@@ -959,9 +959,11 @@ class RNNEncoderDecoder(object):
         if self.state['last_backward']:
             training_c_components.append(ReplicateLayer(self.x.shape[0])
                     (backward_training_c[0]))
+        self.state['c_dim'] = len(training_c_components) * self.state['dim']
 
         logger.debug("Create decoder")
-        self.decoder = Decoder(self.state, self.rng, skip_init=self.skip_init)
+        self.decoder = Decoder(self.state, self.rng,
+                skip_init=self.skip_init)
         self.decoder.create_layers()
         logger.debug("Build log-likelihood computation graph")
         self.predictions = self.decoder.build_decoder(
