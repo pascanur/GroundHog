@@ -19,7 +19,8 @@ from groundhog.layers import\
         UnaryOp,\
         Shift,\
         LastState,\
-        DropOp
+        DropOp,\
+        Concatenate
 from groundhog.models import LM_Model
 from groundhog.datasets import PytablesBitextIterator
 
@@ -554,7 +555,7 @@ class Decoder(EncoderDecoderBase):
 
         decoding_kwargs = dict(self.default_kwargs)
         decoding_kwargs.update(dict(
-                n_in=self.state['dim'],
+                n_in=self.state['dim'] * (1 if not self.state['backward'] else 2),
                 n_hids=self.state['dim'] * self.state['dim_mult'],
                 activation=['lambda x:x'],
                 learn_bias=False))
@@ -566,19 +567,11 @@ class Decoder(EncoderDecoderBase):
                     self.rng,
                     name='{}_dec_inputter_{}'.format(self.prefix, level),
                     **decoding_kwargs)
-                self.back_decode_inputers[level] = MultiLayer(
-                    self.rng,
-                    name='{}_back_dec_inputter_{}'.format(self.prefix, level),
-                    **decoding_kwargs)
                 # Update gate contributions
                 if prefix_lookup(self.state, 'dec', 'rec_gating'):
                     self.decode_updaters[level] = MultiLayer(
                         self.rng,
                         name='{}_dec_updater_{}'.format(self.prefix, level),
-                        **decoding_kwargs)
-                    self.back_decode_updaters[level] = MultiLayer(
-                        self.rng,
-                        name='{}_back_dec_updater_{}'.format(self.prefix, level),
                         **decoding_kwargs)
                 # Reset gate contributions
                 if prefix_lookup(self.state, 'dec', 'rec_reseting'):
@@ -586,17 +579,12 @@ class Decoder(EncoderDecoderBase):
                         self.rng,
                         name='{}_dec_reseter_{}'.format(self.prefix, level),
                         **decoding_kwargs)
-                    self.back_decode_reseters[level] = MultiLayer(
-                        self.rng,
-                        name='{}_back_dec_reseter_{}'.format(self.prefix, level),
-                        **decoding_kwargs)
 
     def _create_readout_layers(self):
         logger.debug("_create_readout_layers")
 
         readout_kwargs = dict(self.default_kwargs)
         readout_kwargs.update(dict(
-                n_in=self.state['dim'],
                 n_hids=self.state['dim'],
                 activation='lambda x: x',
                 bias_scale=[self.state['bias_mlp']/3],
@@ -604,15 +592,10 @@ class Decoder(EncoderDecoderBase):
 
         self.repr_readout = MultiLayer(
                 self.rng,
+                n_in=self.state['dim'] * (1 if not self.state['backward'] else 2),
                 learn_bias=False,
                 name='{}_repr_readout'.format(self.prefix),
                 **readout_kwargs)
-        if self.state['backward']:
-            self.backward_repr_readout = MultiLayer(
-                    self.rng,
-                    learn_bias=False,
-                    name='{}_back_repr_readout'.format(self.prefix),
-                    **readout_kwargs)
 
         # Attention - this is the only readout layer
         # with trainable bias. Should be careful with that.
@@ -620,6 +603,7 @@ class Decoder(EncoderDecoderBase):
         for level in range(self.num_levels):
             self.hidden_readouts[level] = MultiLayer(
                 self.rng,
+                n_in=self.state['dim'],
                 name='{}_hid_readout_{}'.format(self.prefix, level),
                 **readout_kwargs)
 
@@ -659,25 +643,17 @@ class Decoder(EncoderDecoderBase):
                     sum_over_time=True,
                     **self.default_kwargs)
 
-    def build_decoder(self, forward_c, y,
+    def build_decoder(self, c, y,
             y_mask=None,
-            backward_c=None,
             mode=EVALUATION,
             given_init_states=None,
             T=1):
         """Create the computational graph of the RNN Decoder.
 
-        Supports two different decoding methods:
-            a) Decode from representation of the whole source sequence. Default.
-            b) Decode from transcription consisting of
-            forward and backward states.
-
-        :param forward_c:
-            [a] representation[s] produced by an encoder.
+        :param c:
+            representations produced by an encoder.
             (n_samples, dim) matrix if mode == sampling or
-            (batch_size, dim) matrix if mode == evaluation
-            (batch_size, max_seq_len, dim) if mode == evaluation
-                and decoding from transciption
+            (max_seq_len, batch_size, dim) matrix if mode == evaluation
 
         :param y:
             if mode == evaluation
@@ -689,12 +665,6 @@ class Decoder(EncoderDecoderBase):
         :param y_mask:
             if mode == evaluation a 0/1 matrix determining lengths
                 of the target sequences, must be None otherwise
-
-        :param backward_c:
-            [a] representation[s] produced by backward encoder.
-            When not None it is sign that we decode from transcription
-            (n_samples, dim) if mode == sampling or
-            (batch_size, max_seq_len, dim) if mode == evaluation
 
         :param mode:
             chooses on of three modes: evaluation, sampling and beam_search
@@ -725,16 +695,10 @@ class Decoder(EncoderDecoderBase):
         #   (max_seq_len, batch_size, dim)
         # Shape if mode != evaluation
         #   (n_samples, dim)
-        if not backward_c:
-            forward_c = ReplicateLayer(y.shape[0])(forward_c)
-        elif mode == Decoder.EVALUATION:
-            padder = PadLayer(y.shape[0])
-            forward_c = padder(forward_c)
-            backward_c = padder(backward_c)
-        if self.state['debug_backward']:
-            forward_c = backward_c
-        # forward_c = dbg_hook(partial(hid_hook, msg="forward_c"), forward_c)
-        # backward_c = dbg_hook(partial(hid_hook, msg="backward_c"), backward_c)
+        if mode == Decoder.EVALUATION:
+            c = PadLayer(y.shape[0])(c)
+        # dbg_hook(lambda _, x : logger.debug("forward repr sum: {}".format(x[:, :, :self.state['dim']].sum(2).flatten())), c)
+        # dbg_hook(lambda _, x : logger.debug("backward repr sum: {}".format(x[:, :, self.state['dim']:].sum(2).flatten())), c)
 
         # Low rank embeddings of all the input words.
         # Shape if mode == evaluation
@@ -759,12 +723,9 @@ class Decoder(EncoderDecoderBase):
             reset_signals.append(self.reset_embedders[level](approx_embeddings))
 
             # Contributions from the encoded source sentence.
-            input_signals[level] += self.decode_inputers[level](forward_c)
-            update_signals[level] += self.decode_updaters[level](forward_c)
-            reset_signals[level] += self.decode_reseters[level](forward_c)
-            input_signals[level] += self.back_decode_inputers[level](backward_c)
-            update_signals[level] += self.back_decode_updaters[level](backward_c)
-            reset_signals[level] += self.back_decode_reseters[level](backward_c)
+            input_signals[level] += self.decode_inputers[level](c)
+            update_signals[level] += self.decode_updaters[level](c)
+            reset_signals[level] += self.decode_reseters[level](c)
 
         # Hidden layers' initial states.
         # Shapes if mode == evaluation:
@@ -775,11 +736,8 @@ class Decoder(EncoderDecoderBase):
         if not init_states:
             init_states = []
             for level in range(self.num_levels):
-                if backward_c:
-                    init_states.append(self.initializers[level](backward_c[0]))
-                else:
-                    # In fact if backward_c is None that any forward_c[i] would do
-                    init_states.append(self.initializers[level](forward_c[-1]))
+                init_c = c[0, :, self.state['dim']:] if self.state['backward'] else c[-1]
+                init_states.append(self.initializers[level](init_c))
         # init_states[0] = dbg_hook(partial(hid_hook, msg="init sum"), init_states[0])
 
         # Hidden layers' states.
@@ -822,10 +780,8 @@ class Decoder(EncoderDecoderBase):
         # Shape if mode != evaluation
         #   (n_samples, dim_r)
         # ... where dim_r depends on 'deep_out' option.
-        readout = self.repr_readout(forward_c)
-        if backward_c:
-            readout += self.backward_repr_readout(backward_c)
-        # readout = dbg_hook(lambda _, x : logger.debug("readout shape: {}".format(x.shape)), readout)
+        readout = self.repr_readout(c)
+        # readout = dbg_hook(lambda _, x : logger.debug("readout shape: {}".format(x.sum(1))), readout)
         for level in range(self.num_levels):
             if mode != Decoder.EVALUATION:
                 read_from = init_states[level]
@@ -895,12 +851,8 @@ class Decoder(EncoderDecoderBase):
         args = iter(args)
 
         # Arguments that correspond to scan's "sequences" parameteter:
-        if self.state['backward']:
-            forward_c = next(args)
-            backward_c = next(args)
-            repr_dict = dict(forward_c=forward_c, backward_c=backward_c)
-            assert forward_c.ndim == 1
-            assert backward_c.ndim == 1
+        c = next(args)
+        assert c.ndim == 1
 
         # Arguments that correspond to scan's "outputs" parameteter:
         prev_word = next(args)
@@ -911,14 +863,10 @@ class Decoder(EncoderDecoderBase):
         assert prev_hidden_states[0].ndim == 2
 
         # Arguments that correspond to scan's "non_sequences":
-        if not self.state['backward']:
-            c = next(args)
-            assert c.ndim == 1
-            repr_dict = dict(forward_c=c)
         T = next(args)
         assert T.ndim == 0
 
-        decoder_args = dict(given_init_states=prev_hidden_states, T=T, **repr_dict)
+        decoder_args = dict(given_init_states=prev_hidden_states, T=T, c=c)
 
         sample, log_prob = self.build_decoder(y=prev_word, mode=Decoder.SAMPLING, **decoder_args)[:2]
         hidden_states = self.build_decoder(y=sample, mode=Decoder.SAMPLING, **decoder_args)[2:]
@@ -927,24 +875,17 @@ class Decoder(EncoderDecoderBase):
     def build_initializers(self, c):
         return [init(c).out for init in self.initializers]
 
-    def build_sampler(self, n_samples, n_steps, T, forward_c, backward_c=None):
+    def build_sampler(self, n_samples, n_steps, T, c):
         states = [TT.zeros(shape=(n_samples,), dtype='int64'),
                 TT.zeros(shape=(n_samples,), dtype='float32')]
-        if self.state['backward']:
-            states += [ReplicateLayer(n_samples)(init(backward_c[0]).out).out for init in self.initializers]
-        else:
-            states += [ReplicateLayer(n_samples)(init(forward_c).out).out for init in self.initializers]
+        init_c = c[0, self.state['dim']:] if self.state['backward'] else c[-1]
+        states += [ReplicateLayer(n_samples)(init(init_c).out).out for init in self.initializers]
 
-        sequences = []
+        # Pad with final states
+        replicator = ReplicateLayer(n_steps - c.shape[0])
+        c = TT.concatenate([c, replicator(c[-1]).out])
+        sequences = [c]
         non_sequences = [T]
-        if self.state['backward']:
-            # Pad with final states
-            replicator = ReplicateLayer(n_steps - forward_c.shape[0])
-            forward_c = TT.concatenate([forward_c, replicator(forward_c[-1]).out])
-            backward_c = TT.concatenate([backward_c, replicator(backward_c[-1]).out])
-            sequences = [forward_c, backward_c]
-        else:
-            non_sequences = [forward_c] + non_sequences
 
         outputs, updates = theano.scan(self.sampling_step,
                 outputs_info=states,
@@ -987,8 +928,6 @@ class RNNEncoderDecoder(object):
                 self.x, self.x_mask,
                 use_noise=True,
                 return_hidden_layers=self.state['backward'])
-
-        backward_training_c = None
         if self.state['backward']:
             logger.debug("Create backward encoder")
             self.backward_encoder = Encoder(self.state, self.rng,
@@ -1004,15 +943,18 @@ class RNNEncoderDecoder(object):
                     return_hidden_layers=True)
             # Reverse time for backward representations.
             backward_training_c.out = backward_training_c.out[::-1]
+            training_c = Concatenate(axis=2)(training_c, backward_training_c)
+        else:
+            training_c = ReplicateLayer(self.x.shape[0])(training_c)
 
         logger.debug("Create decoder")
         self.decoder = Decoder(self.state, self.rng, skip_init=self.skip_init)
         self.decoder.create_layers()
         logger.debug("Build log-likelihood computation graph")
         self.predictions = self.decoder.build_decoder(
-                forward_c=training_c,
-                backward_c=backward_training_c,
-                y=self.y, y_mask=self.y_mask)
+                c=training_c,
+                y=self.y,
+                y_mask=self.y_mask)
 
         logger.debug("Build sampling computation graph")
         self.sampling_x = TT.lvector("sampling_x")
@@ -1021,17 +963,19 @@ class RNNEncoderDecoder(object):
         self.T = TT.scalar("T")
         self.sampling_c = self.encoder.build_encoder(
                 self.sampling_x,
-                return_hidden_layers=True).out
+                return_hidden_layers=self.state['backward']).out
         backward_sampling_c = None
         if self.state['backward']:
             backward_sampling_c = self.backward_encoder.build_encoder(
                     self.sampling_x[::-1],
                     approx_embeddings=self.encoder.approx_embedder(self.sampling_x[::-1]),
                     return_hidden_layers=True).out[::-1]
+            self.sampling_c = Concatenate(axis=1)(self.sampling_c, backward_sampling_c).out
+        else:
+            self.sampling_c = ReplicateLayer(self.sampling_x.shape[0])(self.sampling_c)
         (self.sample, self.sample_log_prob), self.sampling_updates =\
             self.decoder.build_sampler(self.n_samples, self.n_steps, self.T,
-                    forward_c=self.sampling_c,
-                    backward_c=backward_sampling_c)
+                    c=self.sampling_c)
 
         logger.debug("Create auxiliary variables")
         self.c = TT.vector("c")

@@ -504,6 +504,7 @@ class Concatenate(Layer):
 
     def __init__(self, axis):
         self.axis = axis
+        Layer.__init__(self, 0, 0, None)
 
     def fprop(self, *args):
         self.out = TT.concatenate(args, axis=self.axis)
