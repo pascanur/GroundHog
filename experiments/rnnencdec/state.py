@@ -27,16 +27,18 @@ def prototype_state():
     state['n_sym_target'] = state['null_sym_target'] + 1
     state['unk_sym_target'] = 1
 
-    # If True, transcription consisting from forward and hidden states
-    # will be generated and used for translation.
+    # The components of the decoder annotation
+    state['last_forward'] = True
+    state['last_backward'] = False
+    state['forward'] = False
     state['backward'] = False
-    state['debug_backward'] = True
 
     # This is for predicting the next target from the current one
     state['bigram'] = True
 
     # This for the hidden state initilization
     state['bias_code'] = True
+
     # This for influence on decoding from representation
     state['decoding_inputs'] = True
 

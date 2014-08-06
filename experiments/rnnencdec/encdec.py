@@ -918,64 +918,86 @@ class RNNEncoderDecoder(object):
         self.y_mask = TT.matrix('y_mask')
         self.inputs = [self.x, self.y, self.x_mask, self.y_mask]
 
+        # Annotation for the log-likelihood computation
+        training_c_components = []
+
         logger.debug("Create encoder")
         self.encoder = Encoder(self.state, self.rng,
                 prefix="enc",
                 skip_init=self.skip_init)
         self.encoder.create_layers()
+
         logger.debug("Build encoding computation graph")
-        training_c = self.encoder.build_encoder(
+        forward_training_c = self.encoder.build_encoder(
                 self.x, self.x_mask,
                 use_noise=True,
-                return_hidden_layers=self.state['backward'])
+                return_hidden_layers=True)
+
+        logger.debug("Create backward encoder")
+        self.backward_encoder = Encoder(self.state, self.rng,
+                prefix="back_enc",
+                skip_init=self.skip_init)
+        self.backward_encoder.create_layers()
+
+        logger.debug("Build backward encoding computation graph")
+        backward_training_c = self.backward_encoder.build_encoder(
+                self.x[::-1],
+                self.x_mask[::-1],
+                use_noise=True,
+                approx_embeddings=self.encoder.approx_embedder(self.x[::-1]),
+                return_hidden_layers=True)
+        # Reverse time for backward representations.
+        backward_training_c.out = backward_training_c.out[::-1]
+
+        if self.state['forward']:
+            training_c_components.append(forward_training_c)
+        if self.state['last_forward']:
+            training_c_components.append(
+                    ReplicateLayer(self.x.shape[0])(forward_training_c[-1]))
         if self.state['backward']:
-            logger.debug("Create backward encoder")
-            self.backward_encoder = Encoder(self.state, self.rng,
-                    prefix="back_enc",
-                    skip_init=self.skip_init)
-            self.backward_encoder.create_layers()
-            logger.debug("Build backward encoding computation graph")
-            backward_training_c = self.backward_encoder.build_encoder(
-                    self.x[::-1],
-                    self.x_mask[::-1],
-                    use_noise=True,
-                    approx_embeddings=self.encoder.approx_embedder(self.x[::-1]),
-                    return_hidden_layers=True)
-            # Reverse time for backward representations.
-            backward_training_c.out = backward_training_c.out[::-1]
-            training_c = Concatenate(axis=2)(training_c, backward_training_c)
-        else:
-            training_c = ReplicateLayer(self.x.shape[0])(training_c)
+            training_c_components.append(backward_training_c)
+        if self.state['last_backward']:
+            training_c_components.append(ReplicateLayer(self.x.shape[0])
+                    (backward_training_c[0]))
 
         logger.debug("Create decoder")
         self.decoder = Decoder(self.state, self.rng, skip_init=self.skip_init)
         self.decoder.create_layers()
         logger.debug("Build log-likelihood computation graph")
         self.predictions = self.decoder.build_decoder(
-                c=training_c,
+                c=Concatenate(axis=2)(*training_c_components),
                 y=self.y,
                 y_mask=self.y_mask)
+
+        # Annotation for sampling
+        sampling_c_components = []
 
         logger.debug("Build sampling computation graph")
         self.sampling_x = TT.lvector("sampling_x")
         self.n_samples = TT.lscalar("n_samples")
         self.n_steps = TT.lscalar("n_steps")
         self.T = TT.scalar("T")
-        self.sampling_c = self.encoder.build_encoder(
+        self.forward_sampling_c = self.encoder.build_encoder(
                 self.sampling_x,
-                return_hidden_layers=self.state['backward']).out
-        backward_sampling_c = None
+                return_hidden_layers=True).out
+        self.backward_sampling_c = self.backward_encoder.build_encoder(
+                self.sampling_x[::-1],
+                approx_embeddings=self.encoder.approx_embedder(self.sampling_x[::-1]),
+                return_hidden_layers=True).out[::-1]
+        if self.state['forward']:
+            sampling_c_components.append(self.forward_sampling_c)
+        if self.state['last_forward']:
+            sampling_c_components.append(ReplicateLayer(self.sampling_x.shape[0])
+                    (self.forward_sampling_c[-1]))
         if self.state['backward']:
-            backward_sampling_c = self.backward_encoder.build_encoder(
-                    self.sampling_x[::-1],
-                    approx_embeddings=self.encoder.approx_embedder(self.sampling_x[::-1]),
-                    return_hidden_layers=True).out[::-1]
-            self.sampling_c = Concatenate(axis=1)(self.sampling_c, backward_sampling_c).out
-        else:
-            self.sampling_c = ReplicateLayer(self.sampling_x.shape[0])(self.sampling_c)
+            sampling_c_components.append(self.backward_sampling_c)
+        if self.state['last_backward']:
+            sampling_c_components.append(ReplicateLayer(self.sampling_x.shape[0])
+                    (self.backward_sampling_c[0]))
+
         (self.sample, self.sample_log_prob), self.sampling_updates =\
             self.decoder.build_sampler(self.n_samples, self.n_steps, self.T,
-                    c=self.sampling_c)
+                    c=Concatenate(axis=1)(*sampling_c_components).out)
 
         logger.debug("Create auxiliary variables")
         self.c = TT.vector("c")
