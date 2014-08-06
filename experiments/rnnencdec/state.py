@@ -209,6 +209,18 @@ def prototype_sentence_state():
 
     return state
 
+def prototype_helios_sentence_state():
+    state = prototype_sentence_state()
+
+    state['target'] = ["/scratch/jvb-000-aa/bahdanau/binarized_text.shuffled.fr.h5"]
+    state['source'] = ["/scratch/jvb-000-aa/bahdanau/binarized_text.shuffled.en.h5"]
+    state['indx_word'] = "/scratch/jvb-000-aa/bahdanau/ivocab_source.pkl"
+    state['indx_word_target'] = "/scratch/jvb-000-aa/bahdanau/ivocab_target.pkl"
+    state['word_indx'] = "/scratch/jvb-000-aa/bahdanau/vocab.en.pkl"
+    state['word_indx_trgt'] = "/scratch/jvb-000-aa/bahdanau/vocab.fr.pkl"
+
+    return state
+
 def prototype_phrase_lstm_state():
     state = prototype_state()
     state['enc_rec_layer'] = 'LSTMLayer'
