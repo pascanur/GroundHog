@@ -736,7 +736,7 @@ class Decoder(EncoderDecoderBase):
         if not init_states:
             init_states = []
             for level in range(self.num_levels):
-                init_c = c[0, :, self.state['dim']:] if self.state['backward'] else c[-1]
+                init_c = c[0, :, -self.state['dim']:]
                 init_states.append(self.initializers[level](init_c))
         # init_states[0] = dbg_hook(partial(hid_hook, msg="init sum"), init_states[0])
 
@@ -878,7 +878,7 @@ class Decoder(EncoderDecoderBase):
     def build_sampler(self, n_samples, n_steps, T, c):
         states = [TT.zeros(shape=(n_samples,), dtype='int64'),
                 TT.zeros(shape=(n_samples,), dtype='float32')]
-        init_c = c[0, self.state['dim']:] if self.state['backward'] else c[-1]
+        init_c = c[0, -self.state['dim']:]
         states += [ReplicateLayer(n_samples)(init(init_c).out).out for init in self.initializers]
 
         # Pad with final states
