@@ -27,11 +27,18 @@ def prototype_state():
     state['n_sym_target'] = state['null_sym_target'] + 1
     state['unk_sym_target'] = 1
 
+    # The components of the decoder annotation
+    state['last_forward'] = True
+    state['last_backward'] = False
+    state['forward'] = False
+    state['backward'] = False
+
     # This is for predicting the next target from the current one
     state['bigram'] = True
 
     # This for the hidden state initilization
     state['bias_code'] = True
+
     # This for influence on decoding from representation
     state['decoding_inputs'] = True
 
@@ -65,6 +72,12 @@ def prototype_state():
     state['dec_rec_reseting'] = True
     state['dec_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
     state['dec_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
+
+    state['rec_layer'] = 'RecurrentLayer'
+    state['rec_gating'] = True
+    state['rec_reseting'] = True
+    state['rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
+    state['rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
 
     # Representation from hidden layer
     state['take_top'] = True
@@ -193,6 +206,18 @@ def prototype_sentence_state():
     state['bs']  = 80
 
     state['prefix'] = 'sentence_'
+
+    return state
+
+def prototype_helios_sentence_state():
+    state = prototype_sentence_state()
+
+    state['target'] = ["/scratch/jvb-000-aa/bahdanau/binarized_text.shuffled.fr.h5"]
+    state['source'] = ["/scratch/jvb-000-aa/bahdanau/binarized_text.shuffled.en.h5"]
+    state['indx_word'] = "/scratch/jvb-000-aa/bahdanau/ivocab_source.pkl"
+    state['indx_word_target'] = "/scratch/jvb-000-aa/bahdanau/ivocab_target.pkl"
+    state['word_indx'] = "/scratch/jvb-000-aa/bahdanau/vocab.en.pkl"
+    state['word_indx_trgt'] = "/scratch/jvb-000-aa/bahdanau/vocab.fr.pkl"
 
     return state
 
