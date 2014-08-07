@@ -52,6 +52,7 @@ def prototype_state():
 
     state['rank_n_approx'] = 100
     state['rank_n_activ'] = 'lambda x: x'
+    state['learn_emb'] = True
 
     # Hidden layer configuration
     state['enc_rec_layer'] = 'RecurrentLayer'
@@ -104,6 +105,9 @@ def prototype_state():
     state['cutoff'] = 1.
     # TODO: what does it do?
     state['cutoff_rescale_length'] = 0.
+
+    # Choose the training criterion
+    state['use_nce'] = False
 
     # Choose optimization algo
     state['algo'] = 'SGD_adadelta'
