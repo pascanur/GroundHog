@@ -172,7 +172,7 @@ class Container(object):
         vals = numpy.load(filename)
         for p in self.params:
             if p.name in vals:
-                logger.debug('Loading {}'.format(p.name))
+                logger.debug('Loading {} of {}'.format(p.name, p.get_value(borrow=True).shape))
                 if p.get_value().shape != vals[p.name].shape:
                     raise Exception("Shape mismatch: {} != {} for {}"
                             .format(p.get_value().shape, vals[p.name].shape, p.name))
