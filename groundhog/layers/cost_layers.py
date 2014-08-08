@@ -375,7 +375,9 @@ class CostLayer(Layer):
                              use_noise=use_noise,
                              additional_inputs=additional_inputs,
                              no_noise_bias=no_noise_bias)
+        logger.debug("Get grads")
         grads = TT.grad(cost.mean(), self.params)
+        logger.debug("Got grads")
         if additional_gradients:
             for p, gp in additional_gradients:
                 if p in self.params:
@@ -1094,7 +1096,7 @@ class SoftmaxLayer(CostLayer):
         target_shape = target.shape
         target_ndim = target.ndim
         target_shape = target.shape
-        
+
         if self.use_nce:
             logger.debug("Using NCE")
 

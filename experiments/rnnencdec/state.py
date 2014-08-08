@@ -33,6 +33,9 @@ def prototype_state():
     state['forward'] = False
     state['backward'] = False
 
+    # Search in source sentence
+    state['search'] = False
+
     # This is for predicting the next target from the current one
     state['bigram'] = True
 
