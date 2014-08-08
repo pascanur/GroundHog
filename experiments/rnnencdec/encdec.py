@@ -8,13 +8,13 @@ from functools import partial
 import theano
 import theano.tensor as TT
 from theano.ifelse import ifelse
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from groundhog.layers import\
         Layer,\
         MultiLayer,\
         SoftmaxLayer,\
         LSTMLayer, \
-        RecurrentLayer,\
         RecursiveConvolutionalLayer,\
         UnaryOp,\
         Shift,\
@@ -23,6 +23,7 @@ from groundhog.layers import\
         Concatenate
 from groundhog.models import LM_Model
 from groundhog.datasets import PytablesBitextIterator
+from groundhog.utils import sample_zeros, sample_weights_orth, init_bias
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +186,211 @@ def get_batch_iterator(state, rng):
         use_infinite_loop=state['use_infinite_loop'],
         max_len=state['seqlen'])
     return train_data
+
+class RecurrentLayer(Layer):
+    """A copy of RecurrentLayer from groundhog"""
+
+    def __init__(self, rng,
+                 n_hids=500,
+                 scale=.01,
+                 activation=TT.tanh,
+                 bias_fn='init_bias',
+                 bias_scale=0.,
+                 init_fn='sample_weights',
+                 gating=False,
+                 reseting=False,
+                 dropout=1.,
+                 gater_activation=TT.nnet.sigmoid,
+                 reseter_activation=TT.nnet.sigmoid,
+                 weight_noise=False,
+                 name=None):
+        self.grad_scale = 1
+        assert gating == True
+        assert reseting == True
+        assert dropout == 1.
+        assert weight_noise == False
+
+        if type(init_fn) is str or type(init_fn) is unicode:
+            init_fn = eval(init_fn)
+        if type(bias_fn) is str or type(bias_fn) is unicode:
+            bias_fn = eval(bias_fn)
+        if type(activation) is str or type(activation) is unicode:
+            activation = eval(activation)
+        if type(gater_activation) is str or type(gater_activation) is unicode:
+            gater_activation = eval(gater_activation)
+        if type(reseter_activation) is str or type(reseter_activation) is unicode:
+            reseter_activation = eval(reseter_activation)
+
+        self.scale = scale
+        self.activation = activation
+        self.n_hids = n_hids
+        self.bias_scale = bias_scale
+        self.bias_fn = bias_fn
+        self.init_fn = init_fn
+        self.gater_activation = gater_activation
+        self.reseter_activation = reseter_activation
+
+        assert rng is not None, "random number generator should not be empty!"
+
+        super(RecurrentLayer, self).__init__(self.n_hids,
+                self.n_hids, rng, name)
+
+        self.trng = RandomStreams(self.rng.randint(int(1e6)))
+        self.params = []
+        self._init_params()
+
+    def _init_params(self):
+        self.W_hh = theano.shared(
+                self.init_fn(self.n_hids,
+                self.n_hids,
+                -1,
+                self.scale,
+                rng=self.rng),
+                name="W_%s"%self.name)
+        self.params = [self.W_hh]
+        self.G_hh = theano.shared(
+                self.init_fn(self.n_hids,
+                    self.n_hids,
+                    -1,
+                    self.scale,
+                    rng=self.rng),
+                name="G_%s"%self.name)
+        self.params.append(self.G_hh)
+        self.R_hh = theano.shared(
+                self.init_fn(self.n_hids,
+                    self.n_hids,
+                    -1,
+                    self.scale,
+                    rng=self.rng),
+                name="R_%s"%self.name)
+        self.params.append(self.R_hh)
+        self.params_grad_scale = [self.grad_scale for x in self.params]
+        self.restricted_params = [x for x in self.params]
+
+    def step_fprop(self,
+                   state_below,
+                   mask = None,
+                   state_before = None,
+                   gater_below = None,
+                   reseter_below = None,
+                   use_noise=True,
+                   no_noise_bias = False):
+        """
+        Constructs the computational graph of this layer.
+
+        :type state_below: theano variable
+        :param state_below: the input to the layer
+
+        :type mask: None or theano variable
+        :param mask: mask describing the length of each sequence in a
+            minibatch
+
+        :type state_before: theano variable
+        :param state_before: the previous value of the hidden state of the
+            layer
+
+        :type gater_below: theano variable
+        :param gater_below: the input to the update gate
+
+        :type reseter_below: theano variable
+        :param reseter_below: the input to the reset gate
+
+        :type use_noise: bool
+        :param use_noise: flag saying if weight noise should be used in
+            computing the output of this layer
+
+        :type no_noise_bias: bool
+        :param no_noise_bias: flag saying if weight noise should be added to
+            the bias as well
+        """
+
+        rval = []
+        W_hh = self.W_hh
+        G_hh = self.G_hh
+        R_hh = self.R_hh
+
+        # Reset gate:
+        # optionally reset the hidden state.
+        reseter = self.reseter_activation(TT.dot(state_before, R_hh) +
+                reseter_below)
+        reseted_state_before = reseter * state_before
+
+        # Feed the input to obtain potential new state.
+        preactiv = TT.dot(reseted_state_before, W_hh) + state_below
+        h = self.activation(preactiv)
+
+        # Update gate:
+        # optionally reject the potential new state and use the new one.
+        gater = self.gater_activation(TT.dot(state_before, G_hh) +
+                gater_below)
+        h = gater * h + (1-gater) * state_before
+
+        if mask is not None:
+            if h.ndim ==2 and mask.ndim==1:
+                mask = mask.dimshuffle(0,'x')
+            h = mask * h + (1-mask) * state_before
+        return h
+
+    def fprop(self,
+              state_below,
+              mask=None,
+              init_state=None,
+              gater_below=None,
+              reseter_below=None,
+              nsteps=None,
+              batch_size=None,
+              use_noise=True,
+              truncate_gradient=-1,
+              no_noise_bias = False
+             ):
+
+        if theano.config.floatX=='float32':
+            floatX = numpy.float32
+        else:
+            floatX = numpy.float64
+        if nsteps is None:
+            nsteps = state_below.shape[0]
+            if batch_size and batch_size != 1:
+                nsteps = nsteps / batch_size
+        if batch_size is None and state_below.ndim == 3:
+            batch_size = state_below.shape[1]
+        if state_below.ndim == 2 and \
+           (not isinstance(batch_size,int) or batch_size > 1):
+            state_below = state_below.reshape((nsteps, batch_size, self.n_in))
+            if gater_below:
+                gater_below = gater_below.reshape((nsteps, batch_size, self.n_in))
+            if reseter_below:
+                reseter_below = reseter_below.reshape((nsteps, batch_size, self.n_in))
+
+        if not init_state:
+            if not isinstance(batch_size, int) or batch_size != 1:
+                init_state = TT.alloc(floatX(0), batch_size, self.n_hids)
+            else:
+                init_state = TT.alloc(floatX(0), self.n_hids)
+
+        if mask:
+            inps = [state_below, mask, gater_below, reseter_below]
+            fn = lambda x,y,g,r,z : self.step_fprop(x,y,z, gater_below=g, reseter_below=r, use_noise=use_noise,
+                                                no_noise_bias=no_noise_bias)
+        else:
+            inps = [state_below, gater_below, reseter_below]
+            fn = lambda tx, tg,tr, ty: self.step_fprop(tx, None, ty, gater_below=tg,
+                                                reseter_below=tr,
+                                                use_noise=use_noise,
+                                                no_noise_bias=no_noise_bias)
+
+        rval, updates = theano.scan(fn,
+                        sequences = inps,
+                        outputs_info = [init_state],
+                        name='layer_%s'%self.name,
+                        truncate_gradient = truncate_gradient,
+                        n_steps = nsteps)
+        new_h = rval
+        self.out = rval
+        self.rval = rval
+        self.updates =updates
+
+        return self.out
 
 class ReplicateLayer(Layer):
 
@@ -360,7 +566,6 @@ class EncoderDecoderBase(object):
                     gater_activation=prefix_lookup(self.state, self.prefix, 'rec_gater'),
                     reseting=prefix_lookup(self.state, self.prefix, 'rec_reseting'),
                     reseter_activation=prefix_lookup(self.state, self.prefix, 'rec_reseter'),
-                    profile=self.state['profile'],
                     name='{}_transition_{}'.format(self.prefix, level)))
 
 class Encoder(EncoderDecoderBase):
