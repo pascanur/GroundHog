@@ -169,6 +169,8 @@ def get_batch_iterator(state, rng):
                 self.peeked_batch = None
                 return batch
 
+            if not self.batch_iter:
+                raise StopIteration
             batch = next(self.batch_iter)
             if peek:
                 self.peeked_batch = batch
@@ -631,6 +633,7 @@ class Decoder(EncoderDecoderBase):
                     sparsity=-1,
                     rank_n_approx=self.state['rank_n_approx'],
                     name='{}_deep_softmax'.format(self.prefix),
+                    use_nce=self.state['use_nce'] if 'use_nce' in self.state else False,
                     **self.default_kwargs)
         else:
             self.output_nonlinearities = []
@@ -642,6 +645,7 @@ class Decoder(EncoderDecoderBase):
                     rank_n_approx=self.state['rank_n_approx'],
                     name='dec_softmax',
                     sum_over_time=True,
+                    use_nce=self.state['use_nce'] if 'use_nce' in self.state else False,
                     **self.default_kwargs)
 
     def build_decoder(self, c, y,
@@ -1012,12 +1016,17 @@ class RNNEncoderDecoder(object):
     def create_lm_model(self):
         if hasattr(self, 'lm_model'):
             return self.lm_model
+        exclude_params = []
+        if 'learn_emb' in self.state and not self.state['learn_emb']:
+            exclude_params.append(self.encoder.approx_embedder.W_ems[0])
+            exclude_params.append(self.decoder.approx_embedder.W_ems[0])
         self.lm_model = LM_Model(
             cost_layer=self.predictions,
             sample_fn=self.create_sampler(),
             weight_noise_amount=self.state['weight_noise_amount'],
             indx_word=self.state['indx_word_target'],
             indx_word_src=self.state['indx_word'],
+            exclude_params=exclude_params,
             rng=self.rng)
         self.lm_model.load_dict()
         logger.debug("Model params:\n{}".format(
