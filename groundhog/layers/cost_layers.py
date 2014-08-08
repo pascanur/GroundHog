@@ -43,6 +43,7 @@ class CostLayer(Layer):
                  sum_over_time=True,
                  additional_inputs=None,
                  grad_scale=1.,
+                 use_nce=False,
                  name=None):
         """
         :type rng: numpy random generator
@@ -111,6 +112,9 @@ class CostLayer(Layer):
             the parameters of this layer are scaled. It is used for
             differentiating between the different parameters of a model.
 
+        :type use_nce: bool
+        :param use_nce: flag, if true, do not use MLE, but NCE-like cost
+
         :type name: string
         :param name: name of the layer (used to name parameters). NB: in
             this library names are very important because certain parts of the
@@ -140,6 +144,7 @@ class CostLayer(Layer):
             init_fn = eval(init_fn)
         self.init_fn = init_fn
         self.additional_inputs = additional_inputs
+        self.use_nce = use_nce
         self._init_params()
 
     def _init_params(self):
@@ -956,7 +961,9 @@ class SoftmaxLayer(CostLayer):
               temp=numpy.float32(1),
               use_noise=True,
               additional_inputs=None,
-              no_noise_bias=False):
+              no_noise_bias=False,
+              target=None,
+              full_softmax=True):
         """
         Forward pass through the cost layer.
 
@@ -976,35 +983,59 @@ class SoftmaxLayer(CostLayer):
         :param no_noise_bias: flag, stating if weight noise should be added
             to the bias as well, or only to the weights
         """
+        if not full_softmax:
+            assert target != None, 'target must be given'
         if self.rank_n_approx:
             if self.weight_noise and use_noise and self.noise_params:
                 emb_val = self.rank_n_activ(utils.dot(state_below,
                                                       self.W_em1+self.nW_em1))
-                emb_val = TT.dot(emb_val, self.W_em2 + self.nW_em2)
+                nW_em = self.nW_em2
             else:
                 emb_val = self.rank_n_activ(utils.dot(state_below, self.W_em1))
-                emb_val = TT.dot(emb_val, self.W_em2)
+            W_em = self.W_em2
         else:
-            if self.weight_noise and use_noise and self.noise_params:
-                emb_val = utils.dot(state_below, self.W_em + self.nW_em)
-            else:
-                emb_val = utils.dot(state_below, self.W_em)
+            W_em = self.W_em
+            if self.weight_noise:
+                nW_em = self.nW_em
+            emb_val = state_below
 
-        if additional_inputs:
-            if use_noise and self.noise_params:
-                for inp, weight, noise_weight in zip(
-                    additional_inputs, self.additional_weights,
-                    self.noise_additional_weights):
-                    emb_val += utils.dot(inp, (noise_weight + weight))
+        if full_softmax:
+            if self.weight_noise and use_noise and self.noise_params:
+                emb_val = TT.dot(emb_val, W_em + nW_em)
             else:
-                for inp, weight in zip(additional_inputs, self.additional_weights):
-                    emb_val += utils.dot(inp, weight)
-        self.preactiv = emb_val
-        if self.weight_noise and use_noise and self.noise_params and \
-           not no_noise_bias:
-            emb_val = utils.softmax(temp * (emb_val + self.b_em + self.nb_em))
+                emb_val = TT.dot(emb_val, W_em)
+
+            if additional_inputs:
+                if use_noise and self.noise_params:
+                    for inp, weight, noise_weight in zip(
+                        additional_inputs, self.additional_weights,
+                        self.noise_additional_weights):
+                        emb_val += utils.dot(inp, (noise_weight + weight))
+                else:
+                    for inp, weight in zip(additional_inputs, self.additional_weights):
+                        emb_val += utils.dot(inp, weight)
+            if self.weight_noise and use_noise and self.noise_params and \
+               not no_noise_bias:
+                emb_val = temp * (emb_val + self.b_em + self.nb_em)
+            else:
+                emb_val = temp * (emb_val + self.b_em)
         else:
-            emb_val = utils.softmax(temp * (emb_val + self.b_em))
+            W_em = W_em[:, target]
+            if self.weight_noise:
+                nW_em = nW_em[:, target]
+                W_em += nW_em
+            if emb_val.ndim == 3:
+                emb_val = emb_val.reshape([emb_val.shape[0]*emb_val.shape[1], emb_val.shape[2]])
+            emb_val = (W_em.T * emb_val).sum(1) + self.b_em[target]
+            if self.weight_noise and use_noise:
+                emb_val += self.nb_em[target]
+            emb_val = temp * emb_val
+
+        self.preactiv = emb_val
+        if full_softmax:
+            emb_val = utils.softmax(emb_val)
+        else:
+            emb_val = TT.nnet.sigmoid(emb_val)
         self.out = emb_val
         self.state_below = state_below
         self.model_output = emb_val
@@ -1044,30 +1075,64 @@ class SoftmaxLayer(CostLayer):
         """
         See parent class
         """
-        class_probs = self.fprop(state_below,
-                                 temp=temp,
-                                 use_noise=use_noise,
-                                 additional_inputs=additional_inputs,
-                                 no_noise_bias=no_noise_bias)
-        pvals = class_probs
+
+        def _grab_probs(class_probs, target):
+            shape0 = class_probs.shape[0]
+            shape1 = class_probs.shape[1]
+            target_ndim = target.ndim
+            target_shape = target.shape
+            if target.ndim > 1:
+                target = target.flatten()
+            assert target.ndim == 1, 'make sure target is a vector of ints'
+            assert 'int' in target.dtype
+
+            pos = TT.arange(shape0)*shape1
+            new_targ = target + pos
+            return class_probs.flatten()[new_targ]
+
         assert target, 'Computing the cost requires a target'
-        shape0 = class_probs.shape[0]
-        shape1 = class_probs.shape[1]
+        target_shape = target.shape
         target_ndim = target.ndim
         target_shape = target.shape
-        if target.ndim > 1:
-            target = target.flatten()
-        assert target.ndim == 1, 'make sure target is a vector of ints'
-        assert 'int' in target.dtype
+        
+        if self.use_nce:
+            logger.debug("Using NCE")
 
-        pos = TT.arange(shape0)*shape1
-        new_targ = target + pos
-        cost = -TT.log(class_probs.flatten()[new_targ])
+            # positive samples: true targets
+            class_probs = self.fprop(state_below,
+                                     temp=temp,
+                                     use_noise=use_noise,
+                                     additional_inputs=additional_inputs,
+                                     no_noise_bias=no_noise_bias,
+                                     target=target.flatten(),
+                                     full_softmax=False)
+            # negative samples: a single uniform random sample per training sample
+            nsamples = TT.cast(self.trng.uniform(class_probs.shape[0].reshape([1])) * self.n_out, 'int64')
+            neg_probs = self.fprop(state_below,
+                                     temp=temp,
+                                     use_noise=use_noise,
+                                     additional_inputs=additional_inputs,
+                                     no_noise_bias=no_noise_bias,
+                                     target=nsamples.flatten(),
+                                     full_softmax=False)
+
+            cost_target = class_probs
+            cost_nsamples = 1. - neg_probs
+
+            cost = -TT.log(cost_target)
+            cost = cost - TT.log(cost_nsamples)
+        else:
+            class_probs = self.fprop(state_below,
+                                     temp=temp,
+                                     use_noise=use_noise,
+                                     additional_inputs=additional_inputs,
+                                     no_noise_bias=no_noise_bias)
+            cost = -TT.log(_grab_probs(class_probs, target))
+
         self.word_probs = TT.exp(-cost.reshape(target_shape))
         # Set all the probs after the end-of-line to one
         if mask:
             self.word_probs = self.word_probs * mask + 1 - mask
-
         if mask:
             cost = cost * TT.cast(mask.flatten(), theano.config.floatX)
         self.cost_per_sample = (cost.reshape(target_shape).sum(axis=0)

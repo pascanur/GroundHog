@@ -170,6 +170,8 @@ def get_batch_iterator(state, rng):
                 self.peeked_batch = None
                 return batch
 
+            if not self.batch_iter:
+                raise StopIteration
             batch = next(self.batch_iter)
             if peek:
                 self.peeked_batch = batch
@@ -836,6 +838,7 @@ class Decoder(EncoderDecoderBase):
                     sparsity=-1,
                     rank_n_approx=self.state['rank_n_approx'],
                     name='{}_deep_softmax'.format(self.prefix),
+                    use_nce=self.state['use_nce'] if 'use_nce' in self.state else False,
                     **self.default_kwargs)
         else:
             self.output_nonlinearities = []
@@ -844,9 +847,10 @@ class Decoder(EncoderDecoderBase):
                     self.state['dim'],
                     self.state['n_sym_target'],
                     sparsity=-1,
-                    rank_n_approx=0,
-                    name='{}_softmax'.format(self.prefix),
+                    rank_n_approx=self.state['rank_n_approx'],
+                    name='dec_softmax',
                     sum_over_time=True,
+                    use_nce=self.state['use_nce'] if 'use_nce' in self.state else False,
                     **self.default_kwargs)
 
     def build_decoder(self, c, y,
@@ -1203,9 +1207,10 @@ class RNNEncoderDecoder(object):
             sampling_c_components.append(ReplicateLayer(self.sampling_x.shape[0])
                     (self.backward_sampling_c[0]))
 
+        self.sampling_c = Concatenate(axis=1)(*sampling_c_components).out
         (self.sample, self.sample_log_prob), self.sampling_updates =\
             self.decoder.build_sampler(self.n_samples, self.n_steps, self.T,
-                    c=Concatenate(axis=1)(*sampling_c_components).out)
+                    c=self.sampling_c)
 
         logger.debug("Create auxiliary variables")
         self.c = TT.vector("c")
@@ -1238,9 +1243,10 @@ class RNNEncoderDecoder(object):
 
     def create_initializers(self):
         if not hasattr(self, "init_fn"):
+            init_c = self.sampling_c[0, -self.state['dim']:]
             self.init_fn = theano.function(
                     inputs=[self.sampling_c],
-                    outputs=self.decoder.build_initializers(self.sampling_c),
+                    outputs=self.decoder.build_initializers(init_c),
                     name="init_fn")
         return self.init_fn
 
