@@ -15,6 +15,7 @@ from groundhog.layers import\
         MultiLayer,\
         SoftmaxLayer,\
         LSTMLayer, \
+        RecurrentLayer,\
         RecursiveConvolutionalLayer,\
         UnaryOp,\
         Shift,\
@@ -189,7 +190,7 @@ def get_batch_iterator(state, rng):
         max_len=state['seqlen'])
     return train_data
 
-class RecurrentLayer(Layer):
+class RecurrentLayerWithSearch(Layer):
     """A copy of RecurrentLayer from groundhog"""
 
     def __init__(self, rng,
@@ -206,6 +207,8 @@ class RecurrentLayer(Layer):
                  reseter_activation=TT.nnet.sigmoid,
                  weight_noise=False,
                  name=None):
+        logger.debug("RecurrentLayerWithSearch is used!!!")
+
         self.grad_scale = 1
         assert gating == True
         assert reseting == True
@@ -234,7 +237,7 @@ class RecurrentLayer(Layer):
 
         assert rng is not None, "random number generator should not be empty!"
 
-        super(RecurrentLayer, self).__init__(self.n_hids,
+        super(RecurrentLayerWithSearch, self).__init__(self.n_hids,
                 self.n_hids, rng, name)
 
         self.trng = RandomStreams(self.rng.randint(int(1e6)))

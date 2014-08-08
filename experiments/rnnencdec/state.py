@@ -68,7 +68,7 @@ def prototype_state():
     state['enc_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
     state['enc_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
 
-    state['dec_rec_layer'] = 'RecurrentLayer'
+    state['dec_rec_layer'] = 'RecurrentLayerWithSearch'
     state['dec_rec_gating'] = True
     state['dec_rec_reseting'] = True
     state['dec_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
