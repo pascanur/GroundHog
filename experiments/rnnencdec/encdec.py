@@ -998,9 +998,10 @@ class RNNEncoderDecoder(object):
             sampling_c_components.append(ReplicateLayer(self.sampling_x.shape[0])
                     (self.backward_sampling_c[0]))
 
+        self.sampling_c = Concatenate(axis=1)(*sampling_c_components).out
         (self.sample, self.sample_log_prob), self.sampling_updates =\
             self.decoder.build_sampler(self.n_samples, self.n_steps, self.T,
-                    c=Concatenate(axis=1)(*sampling_c_components).out)
+                    c=self.sampling_c)
 
         logger.debug("Create auxiliary variables")
         self.c = TT.vector("c")
@@ -1033,9 +1034,10 @@ class RNNEncoderDecoder(object):
 
     def create_initializers(self):
         if not hasattr(self, "init_fn"):
+            init_c = self.sampling_c[0, -self.state['dim']:]
             self.init_fn = theano.function(
                     inputs=[self.sampling_c],
-                    outputs=self.decoder.build_initializers(self.sampling_c),
+                    outputs=self.decoder.build_initializers(init_c),
                     name="init_fn")
         return self.init_fn
 
