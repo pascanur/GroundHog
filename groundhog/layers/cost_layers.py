@@ -1120,7 +1120,7 @@ class SoftmaxLayer(CostLayer):
             cost_nsamples = 1. - neg_probs
 
             cost = -TT.log(cost_target)
-            cost = cost - TT.log(cost_nsamples)
+            cost = cost - TT.cast(neg_prob.shape[0], 'float32') * TT.log(cost_nsamples)
         else:
             class_probs = self.fprop(state_below,
                                      temp=temp,
