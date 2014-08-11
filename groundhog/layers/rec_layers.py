@@ -1444,22 +1444,22 @@ class LSTMLayer(Layer):
             W_co = self.W_co
 
         # input gate
-        ig = TT.nnet.sigmoid(self._get_slice_below(state_below,'input') + 
+        ig = TT.nnet.sigmoid(self._get_slice_below(state_below,'input') +
                 TT.dot(self._get_slice_before(state_before,'hidden'), W_hi)  +
                 TT.dot(self._get_slice_before(state_before,'cell'), W_ci))
 
         # forget gate
-        fg = TT.nnet.sigmoid(self._get_slice_below(state_below,'forget') + 
+        fg = TT.nnet.sigmoid(self._get_slice_below(state_below,'forget') +
                 TT.dot(self._get_slice_before(state_before,'hidden'), W_hf)  +
                 TT.dot(self._get_slice_before(state_before,'cell'), W_cf))
 
         # cell
         cc = fg * self._get_slice_before(state_before,'cell') +  \
-            ig * self.activation(self._get_slice_below(state_below,'cell') + 
+            ig * self.activation(self._get_slice_below(state_below,'cell') +
                 TT.dot(self._get_slice_before(state_before,'hidden'), W_hc))
 
         # output gate
-        og = TT.nnet.sigmoid(self._get_slice_below(state_below,'output') + 
+        og = TT.nnet.sigmoid(self._get_slice_below(state_below,'output') +
                 TT.dot(self._get_slice_before(state_before,'hidden'), W_ho)  +
                 TT.dot(cc, W_co))
 
