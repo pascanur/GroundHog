@@ -122,6 +122,7 @@ def main():
                 src_seq = parse_input(state, indx_word_src, src_line, raise_unk=True)
                 trgt_seq = parse_input(state, indx_word_trgt, trgt_line, raise_unk=True)
                 probs = compute_probs(src_seq, trgt_seq)
+                print probs
                 print -numpy.sum(numpy.log(probs))
         except StopIteration:
             pass

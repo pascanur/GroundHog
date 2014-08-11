@@ -24,7 +24,8 @@ from groundhog.layers import\
         Concatenate
 from groundhog.models import LM_Model
 from groundhog.datasets import PytablesBitextIterator
-from groundhog.utils import sample_zeros, sample_weights_orth, init_bias
+from groundhog.utils import sample_zeros, sample_weights_orth, init_bias, sample_weights_classic
+import groundhog.utils as utils
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,8 @@ class RecurrentLayerWithSearch(Layer):
     """A copy of RecurrentLayer from groundhog"""
 
     def __init__(self, rng,
-                 n_hids=500,
+                 n_hids,
+                 c_dim=None,
                  scale=.01,
                  activation=TT.tanh,
                  bias_fn='init_bias',
@@ -235,6 +237,7 @@ class RecurrentLayerWithSearch(Layer):
         self.init_fn = init_fn
         self.updater_activation = updater_activation
         self.reseter_activation = reseter_activation
+        self.c_dim = c_dim
 
         assert rng is not None, "random number generator should not be empty!"
 
@@ -270,6 +273,26 @@ class RecurrentLayerWithSearch(Layer):
                     rng=self.rng),
                 name="R_%s"%self.name)
         self.params.append(self.R_hh)
+        self.A_cp = theano.shared(
+                sample_weights_classic(self.c_dim,
+                    self.n_hids,
+                    -1,
+                    10 ** (-3),
+                    rng=self.rng),
+                name="A_%s"%self.name)
+        self.params.append(self.A_cp)
+        self.B_hp = theano.shared(
+                sample_weights_classic(self.n_hids,
+                    self.n_hids,
+                    -1,
+                    10 ** (-3),
+                    rng=self.rng),
+                name="B_%s"%self.name)
+        self.params.append(self.B_hp)
+        self.D_pe = theano.shared(
+                numpy.zeros((self.n_hids, 1), dtype="float32"),
+                name="D_%s"%self.name)
+        self.params.append(self.D_pe)
         self.params_grad_scale = [self.grad_scale for x in self.params]
         self.restricted_params = [x for x in self.params]
 
@@ -322,18 +345,40 @@ class RecurrentLayerWithSearch(Layer):
 
         updater_below = gater_below
 
-        rval = []
         W_hh = self.W_hh
         G_hh = self.G_hh
         R_hh = self.R_hh
+        A_cp = self.A_cp
+        B_hp = self.B_hp
+        D_pe = self.D_pe
+
+        # state_before = dbg_hook(lambda _, x : logger.debug("h sum is {}".format(x.sum(axis=1))), state_before)
 
         # Projection from c
-        # state_below = dbg_hook(lambda _, x : logger.debug("x shape is {}".format(x.shape)), state_below)
+        cndim = c.ndim
+        if cndim == 2:
+            c = c[:, None, :]
         # c = dbg_hook(lambda _, x : logger.debug("c shape is {}".format(x.shape)), c)
-        if c:
-            state_below += self.c_inputer(c[step_num])
-            reseter_below += self.c_reseter(c[step_num])
-            updater_below += self.c_updater(c[step_num])
+
+        p = ReplicateLayer(c.shape[0])(utils.dot(state_before, B_hp)).out + utils.dot(c, A_cp).reshape(
+                (c.shape[0], c.shape[1], self.n_hids))
+        # p = dbg_hook(lambda _, x : logger.debug("p shape is {}".format(x.shape)), p)
+
+        energy = TT.exp(utils.dot(TT.tanh(p), D_pe)).reshape((c.shape[0], state_before.shape[0]))
+        # energy = dbg_hook(lambda _, x : logger.debug("energy shape is {}".format(x)), energy)
+
+        normalizer = energy.sum(axis=0)
+        # normalizer = dbg_hook(lambda _, x : logger.debug("normalizer shape is {}".format(x)), normalizer)
+
+        probs = energy / normalizer
+        # probs = dbg_hook(lambda _, x : logger.debug("probs shape is {}".format(x.shape)), probs)
+
+        ctx = (c * probs.dimshuffle(0, 1, 'x')).sum(axis=0)
+        # ctx = dbg_hook(lambda _, x : logger.debug("ctx shape is {}".format(x.shape)), ctx)
+
+        state_below += self.c_inputer(ctx).out
+        reseter_below += self.c_reseter(ctx).out
+        updater_below += self.c_updater(ctx).out
 
         # Reset gate:
         # optionally reset the hidden state.
@@ -355,7 +400,7 @@ class RecurrentLayerWithSearch(Layer):
             if h.ndim ==2 and mask.ndim==1:
                 mask = mask.dimshuffle(0,'x')
             h = mask * h + (1-mask) * state_before
-        return h, c[step_num]
+        return h, ctx
 
     def fprop(self,
               state_below,
@@ -580,8 +625,12 @@ class EncoderDecoderBase(object):
     def _create_transition_layers(self):
         logger.debug("_create_transition_layers")
         self.transitions = []
+        rec_layer = eval(prefix_lookup(self.state, self.prefix, 'rec_layer'))
+        add_args = dict()
+        if rec_layer == RecurrentLayerWithSearch:
+            add_args = dict(c_dim=self.state['c_dim'])
         for level in range(self.num_levels):
-            self.transitions.append(eval(prefix_lookup(self.state, self.prefix, 'rec_layer'))(
+            self.transitions.append(rec_layer(
                     self.rng,
                     n_hids=self.state['dim'],
                     activation=prefix_lookup(self.state, self.prefix, 'activ'),
@@ -596,7 +645,8 @@ class EncoderDecoderBase(object):
                     gater_activation=prefix_lookup(self.state, self.prefix, 'rec_gater'),
                     reseting=prefix_lookup(self.state, self.prefix, 'rec_reseting'),
                     reseter_activation=prefix_lookup(self.state, self.prefix, 'rec_reseter'),
-                    name='{}_transition_{}'.format(self.prefix, level)))
+                    name='{}_transition_{}'.format(self.prefix, level),
+                    **add_args))
 
 class Encoder(EncoderDecoderBase):
 
@@ -1146,8 +1196,6 @@ class Decoder(EncoderDecoderBase):
         states += [ReplicateLayer(n_samples)(init(init_c).out).out for init in self.initializers]
 
         # Pad with final states
-        replicator = ReplicateLayer(n_steps - c.shape[0])
-        c = TT.concatenate([c, replicator(c[-1]).out])
         non_sequences = [c, T]
 
         outputs, updates = theano.scan(self.sampling_step,
@@ -1266,7 +1314,7 @@ class RNNEncoderDecoder(object):
                     c=self.sampling_c)
 
         logger.debug("Create auxiliary variables")
-        self.c = TT.vector("c")
+        self.c = TT.matrix("c")
         self.current_states = [TT.matrix("cur_{}".format(i))
                 for i in range(self.decoder.num_levels)]
         self.gen_y = TT.lvector("gen_y")

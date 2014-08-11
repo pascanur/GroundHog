@@ -42,7 +42,7 @@ class BeamSearch(object):
     def search(self, seq, n_samples, ignore_unk=False, minlen=1):
         c = self.comp_repr(seq)[0]
         states = map(lambda x : x[None, :], self.comp_init_states(c))
-        c = numpy.vstack([c] + [c[-1]] * (2 * len(seq)))
+        dim = states[0].shape[1]
 
         num_levels = len(states)
 
@@ -59,7 +59,7 @@ class BeamSearch(object):
             last_words = (numpy.array(map(lambda t : t[-1], trans))
                     if k > 0
                     else numpy.zeros(beam_size, dtype="int64"))
-            log_probs = numpy.log(self.comp_next_probs(c[k], last_words, *states)[0])
+            log_probs = numpy.log(self.comp_next_probs(c, last_words, *states)[0])
 
             # Adjust log probs according to search restrictions
             if ignore_unk:
@@ -82,7 +82,7 @@ class BeamSearch(object):
 
             new_trans = [[]] * n_samples
             new_costs = numpy.zeros(n_samples)
-            new_states = [numpy.zeros((n_samples, c.shape[1]), dtype="float32") for level
+            new_states = [numpy.zeros((n_samples, dim), dtype="float32") for level
                     in range(num_levels)]
             inputs = numpy.zeros(n_samples, dtype="int64")
             for i, (orig_idx, next_word, next_cost) in enumerate(
@@ -93,7 +93,7 @@ class BeamSearch(object):
                     new_states[level][i] = states[level][orig_idx]
                 inputs[i] = next_word
 
-            new_states = self.comp_next_states(c[k], inputs, *new_states)
+            new_states = self.comp_next_states(c, inputs, *new_states)
 
             trans = []
             costs = []
