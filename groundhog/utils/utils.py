@@ -107,6 +107,10 @@ def sample_weights(sizeX, sizeY, sparsity, scale, rng):
 def sample_weights_classic(sizeX, sizeY, sparsity, scale, rng):
     sizeX = int(sizeX)
     sizeY = int(sizeY)
+    if sparsity < 0:
+        sparsity = sizeY
+    else:
+        sparsity = numpy.minimum(sizeY, sparsity)
     sparsity = numpy.minimum(sizeY, sparsity)
     values = numpy.zeros((sizeX, sizeY), dtype=theano.config.floatX)
     for dx in xrange(sizeX):
