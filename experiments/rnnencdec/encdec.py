@@ -209,7 +209,7 @@ class RecurrentLayerWithSearch(Layer):
                  reseter_activation=TT.nnet.sigmoid,
                  weight_noise=False,
                  name=None):
-        logger.debug("RecurrentLayerWithSearch is used!!!")
+        logger.debug("RecurrentLayerWithSearch is used")
 
         self.grad_scale = 1
         assert gating == True
@@ -352,27 +352,44 @@ class RecurrentLayerWithSearch(Layer):
         B_hp = self.B_hp
         D_pe = self.D_pe
 
-        # state_before = dbg_hook(lambda _, x : logger.debug("h sum is {}".format(x.sum(axis=1))), state_before)
-
-        # Projection from c
+        # The code works only with 3D tensors
         cndim = c.ndim
         if cndim == 2:
             c = c[:, None, :]
-        # c = dbg_hook(lambda _, x : logger.debug("c shape is {}".format(x.shape)), c)
 
-        p = ReplicateLayer(c.shape[0])(utils.dot(state_before, B_hp)).out + utils.dot(c, A_cp).reshape(
-                (c.shape[0], c.shape[1], self.n_hids))
+        # Warning: either source_num or target_num should be 1
+        # for the following code to make any sense.
+        source_len = c.shape[0]
+        source_num = c.shape[1]
+        target_num = state_before.shape[0]
+        dim = self.n_hids
+
+        # Form projection to the tanh layer from the previous hidden state
+        # Shape: (source_len, target_num, dim)
+        p_from_h = ReplicateLayer(source_len)(utils.dot(state_before, B_hp)).out
+
+        # Form projection to the tanh layer from the source annotation.
+        p_from_c =  utils.dot(c, A_cp).reshape((source_len, source_num, dim))
+
+        # Sum projections - broadcasting happens at the dimension 1.
+        p = p_from_h + p_from_c
         # p = dbg_hook(lambda _, x : logger.debug("p shape is {}".format(x.shape)), p)
 
-        energy = TT.exp(utils.dot(TT.tanh(p), D_pe)).reshape((c.shape[0], state_before.shape[0]))
+        # Apply non-linearity and project to energy.
+        energy = TT.exp(utils.dot(TT.tanh(p), D_pe)).reshape((source_len, target_num))
         # energy = dbg_hook(lambda _, x : logger.debug("energy shape is {}".format(x)), energy)
 
+        # Calculate energy sums.
         normalizer = energy.sum(axis=0)
         # normalizer = dbg_hook(lambda _, x : logger.debug("normalizer shape is {}".format(x)), normalizer)
 
+        # Get probabilities.
         probs = energy / normalizer
-        # probs = dbg_hook(lambda _, x : logger.debug("probs shape is {}".format(x.shape)), probs)
+        # probs = dbg_hook(lambda _, x : logger.debug("probs are {}".format(x.flatten())), probs)
 
+        # Calculate weighted sums of source annotations.
+        # If target_num == 1, c shoulds broadcasted at the 1st dimension.
+        # Probabilities are broadcasted at the 2nd dimension.
         ctx = (c * probs.dimshuffle(0, 1, 'x')).sum(axis=0)
         # ctx = dbg_hook(lambda _, x : logger.debug("ctx shape is {}".format(x.shape)), ctx)
 
