@@ -926,7 +926,6 @@ class Decoder(EncoderDecoderBase):
             sampling temperature
         """
 
-        logger.debug("build_decoder stage 0")
         # y = dbg_hook(lambda _, x : logger.debug("y shape: {}".format(x.shape)), y)
 
         # Check parameter consistency
