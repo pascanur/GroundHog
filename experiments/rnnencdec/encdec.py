@@ -311,6 +311,7 @@ class RecurrentLayerWithSearch(Layer):
                    gater_below=None,
                    reseter_below=None,
                    c=None,
+                   p_from_c=None,
                    use_noise=True,
                    no_noise_bias=False,
                    step_num=None):
@@ -369,7 +370,8 @@ class RecurrentLayerWithSearch(Layer):
         p_from_h = ReplicateLayer(source_len)(utils.dot(state_before, B_hp)).out
 
         # Form projection to the tanh layer from the source annotation.
-        p_from_c =  utils.dot(c, A_cp).reshape((source_len, source_num, dim))
+        if not p_from_c:
+            p_from_c =  utils.dot(c, A_cp).reshape((source_len, source_num, dim))
 
         # Sum projections - broadcasting happens at the dimension 1.
         p = p_from_h + p_from_c
@@ -460,20 +462,23 @@ class RecurrentLayerWithSearch(Layer):
 
         if mask:
             inps = [state_below, mask, updater_below, reseter_below]
-            fn = lambda i, x, y, g, r, z, c1 : self.step_fprop(x, y, z,
-                    gater_below=g, reseter_below=r, c=c1,
+            fn = lambda i, x, y, g, r, z, c1, pc : self.step_fprop(x, y, z,
+                    gater_below=g, reseter_below=r, c=c1, p_from_c=pc,
                     use_noise=use_noise, no_noise_bias=no_noise_bias,
                     step_num=i)
         else:
             inps = [state_below, updater_below, reseter_below]
-            fn = lambda i, tx, tg, tr, ty, c1 : self.step_fprop(tx, None, ty,
-                    gater_below=tg, reseter_below=tr, c=c1,
+            fn = lambda i, tx, tg, tr, ty, c1, pc : self.step_fprop(tx, None, ty,
+                    gater_below=tg, reseter_below=tr, c=c1, p_from_c=pc,
                     use_noise=use_noise, no_noise_bias=no_noise_bias,
                     step_num=i)
 
+        p_from_c =  utils.dot(c, self.A_cp).reshape(
+                (c.shape[0], c.shape[1], self.n_hids))
+
         rval, updates = theano.scan(fn,
                         sequences=[TT.arange(nsteps, dtype="int64")] + inps,
-                        non_sequences=[c] if c else [],
+                        non_sequences=[c, p_from_c],
                         outputs_info=[init_state, None],
                         name='layer_%s'%self.name,
                         truncate_gradient=truncate_gradient,
