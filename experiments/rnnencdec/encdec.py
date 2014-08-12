@@ -432,8 +432,8 @@ class RecurrentLayerWithSearch(Layer):
               batch_size=None,
               use_noise=True,
               truncate_gradient=-1,
-              no_noise_bias = False
-             ):
+              no_noise_bias = False):
+
         updater_below = gater_below
 
         if theano.config.floatX=='float32':
