@@ -419,7 +419,7 @@ class RecurrentLayerWithSearch(Layer):
             if h.ndim ==2 and mask.ndim==1:
                 mask = mask.dimshuffle(0,'x')
             h = mask * h + (1-mask) * state_before
-        return h, ctx
+        return h, ctx, probs
 
     def fprop(self,
               state_below,
@@ -477,7 +477,7 @@ class RecurrentLayerWithSearch(Layer):
         rval, updates = theano.scan(fn,
                         sequences=inps,
                         non_sequences=[c, p_from_c],
-                        outputs_info=[init_state, None],
+                        outputs_info=[init_state, None, None],
                         name='layer_%s'%self.name,
                         truncate_gradient=truncate_gradient,
                         n_steps=nsteps)
@@ -1068,6 +1068,8 @@ class Decoder(EncoderDecoderBase):
         #  (n_samples, dim)
         hidden_layers = []
         contexts = []
+        # Default value for alignment must be smth computable
+        alignment = TT.zeros((1,))
         for level in range(self.num_levels):
             if level > 0:
                 input_signals[level] += self.inputers[level](hidden_layers[level - 1])
@@ -1091,7 +1093,7 @@ class Decoder(EncoderDecoderBase):
                     use_noise=mode == Decoder.EVALUATION,
                     **add_kwargs)
             if self.state['search']:
-                h, ctx = result
+                h, ctx, alignment = result
             else:
                 h = result
                 if mode == Decoder.EVALUATION:
@@ -1172,12 +1174,16 @@ class Decoder(EncoderDecoderBase):
             return self.output_layer(
                     state_below=readout.out,
                     temp=T).out
-        else:
-            return self.output_layer.train(
+        elif mode == Decoder.EVALUATION:
+            return (self.output_layer.train(
                     state_below=readout,
                     target=y,
                     mask=y_mask,
-                    reg=None)
+                    reg=None),
+                    alignment.out)
+        else:
+            raise Exception("Unknown mode for build_decoder")
+
 
     def sampling_step(self, *args):
         """Implements one step of sampling
@@ -1304,7 +1310,7 @@ class RNNEncoderDecoder(object):
                 skip_init=self.skip_init)
         self.decoder.create_layers()
         logger.debug("Build log-likelihood computation graph")
-        self.predictions = self.decoder.build_decoder(
+        self.predictions, self.alignment = self.decoder.build_decoder(
                 c=Concatenate(axis=2)(*training_c_components),
                 y=self.y,
                 y_mask=self.y_mask)
@@ -1427,18 +1433,22 @@ class RNNEncoderDecoder(object):
         return self.next_states_fn
 
 
-    def create_probs_computer(self):
+    def create_probs_computer(self, return_alignment=False):
         if not hasattr(self, 'probs_fn'):
             logger.debug("Compile probs computer")
             self.probs_fn = theano.function(
                     inputs=self.inputs,
-                    outputs=[self.predictions.word_probs],
+                    outputs=[self.predictions.word_probs, self.alignment],
                     name="probs_fn")
         def probs_computer(x, y):
             x_mask = numpy.ones(x.shape[0], dtype="float32")
             y_mask = numpy.ones(y.shape[0], dtype="float32")
-            return self.probs_fn(x[:, None], y[:, None],
+            probs, alignment = self.probs_fn(x[:, None], y[:, None],
                     x_mask[:, None], y_mask[:, None])
+            if return_alignment:
+                return probs, alignment
+            else:
+                return probs
         return probs_computer
 
 def parse_input(state, word2idx, line, raise_unk=False, idx2word=None):
@@ -1458,4 +1468,4 @@ def parse_input(state, word2idx, line, raise_unk=False, idx2word=None):
         parsed_in = [idx2word[sx] for sx in seq]
         return seq, " ".join(parsed_in)
 
-    return seq
+    return seq, seqin
