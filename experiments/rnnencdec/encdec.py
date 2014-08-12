@@ -1016,7 +1016,7 @@ class Decoder(EncoderDecoderBase):
         #   (max_seq_len, batch_size, dim)
         # Shape if mode != evaluation
         #   (n_samples, dim)
-        if mode == Decoder.EVALUATION:
+        if not self.state['search'] and mode == Decoder.EVALUATION:
             c = PadLayer(y.shape[0])(c)
         # dbg_hook(lambda _, x : logger.debug("forward repr sum: {}".format(x[:, :, :self.state['dim']].sum(2).flatten())), c)
         # dbg_hook(lambda _, x : logger.debug("backward repr sum: {}".format(x[:, :, self.state['dim']:].sum(2).flatten())), c)
@@ -1045,9 +1045,10 @@ class Decoder(EncoderDecoderBase):
 
             # Contributions from the encoded source sentence.
             if not self.state['search']:
-                input_signals[level] += self.decode_inputers[level](c)
-                update_signals[level] += self.decode_updaters[level](c)
-                reset_signals[level] += self.decode_reseters[level](c)
+                current_c = c if mode == Decoder.EVALUATION else c[step_num]
+                input_signals[level] += self.decode_inputers[level](current_c)
+                update_signals[level] += self.decode_updaters[level](current_c)
+                reset_signals[level] += self.decode_reseters[level](current_c)
 
         # Hidden layers' initial states.
         # Shapes if mode == evaluation:
@@ -1095,7 +1096,10 @@ class Decoder(EncoderDecoderBase):
                 h, ctx = result
             else:
                 h = result
-                ctx = c
+                if mode == Decoder.EVALUATION:
+                    ctx = c
+                else:
+                    ctx = ReplicateLayer(given_init_states[0].shape[0])(c[step_num]).out
             hidden_layers.append(h)
             contexts.append(ctx)
 
@@ -1216,6 +1220,9 @@ class Decoder(EncoderDecoderBase):
                 TT.zeros(shape=(n_samples,), dtype='float32')]
         init_c = c[0, -self.state['dim']:]
         states += [ReplicateLayer(n_samples)(init(init_c).out).out for init in self.initializers]
+
+        if not self.state['search']:
+            c = PadLayer(n_steps)(c).out
 
         # Pad with final states
         non_sequences = [c, T]
