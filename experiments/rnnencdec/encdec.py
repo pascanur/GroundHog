@@ -432,7 +432,7 @@ class RecurrentLayerWithSearch(Layer):
               batch_size=None,
               use_noise=True,
               truncate_gradient=-1,
-              no_noise_bias = False):
+              no_noise_bias=False):
 
         updater_below = gater_below
 
@@ -462,22 +462,20 @@ class RecurrentLayerWithSearch(Layer):
 
         if mask:
             inps = [state_below, mask, updater_below, reseter_below]
-            fn = lambda i, x, y, g, r, z, c1, pc : self.step_fprop(x, y, z,
+            fn = lambda x, y, g, r, z, c1, pc : self.step_fprop(x, y, z,
                     gater_below=g, reseter_below=r, c=c1, p_from_c=pc,
-                    use_noise=use_noise, no_noise_bias=no_noise_bias,
-                    step_num=i)
+                    use_noise=use_noise, no_noise_bias=no_noise_bias)
         else:
             inps = [state_below, updater_below, reseter_below]
-            fn = lambda i, tx, tg, tr, ty, c1, pc : self.step_fprop(tx, None, ty,
+            fn = lambda tx, tg, tr, ty, c1, pc : self.step_fprop(tx, None, ty,
                     gater_below=tg, reseter_below=tr, c=c1, p_from_c=pc,
-                    use_noise=use_noise, no_noise_bias=no_noise_bias,
-                    step_num=i)
+                    use_noise=use_noise, no_noise_bias=no_noise_bias)
 
         p_from_c =  utils.dot(c, self.A_cp).reshape(
                 (c.shape[0], c.shape[1], self.n_hids))
 
         rval, updates = theano.scan(fn,
-                        sequences=[TT.arange(nsteps, dtype="int64")] + inps,
+                        sequences=inps,
                         non_sequences=[c, p_from_c],
                         outputs_info=[init_state, None],
                         name='layer_%s'%self.name,
