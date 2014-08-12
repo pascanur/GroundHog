@@ -306,10 +306,10 @@ class RecurrentLayerWithSearch(Layer):
 
     def step_fprop(self,
                    state_below,
-                   mask=None,
-                   state_before=None,
+                   state_before,
                    gater_below=None,
                    reseter_below=None,
+                   mask=None,
                    c=None,
                    p_from_c=None,
                    use_noise=True,
@@ -462,13 +462,13 @@ class RecurrentLayerWithSearch(Layer):
 
         if mask:
             inps = [state_below, mask, updater_below, reseter_below]
-            fn = lambda x, y, g, r, z, c1, pc : self.step_fprop(x, y, z,
+            fn = lambda x, m, g, r, h, c1, pc : self.step_fprop(x, h, mask=m,
                     gater_below=g, reseter_below=r, c=c1, p_from_c=pc,
                     use_noise=use_noise, no_noise_bias=no_noise_bias)
         else:
             inps = [state_below, updater_below, reseter_below]
-            fn = lambda tx, tg, tr, ty, c1, pc : self.step_fprop(tx, None, ty,
-                    gater_below=tg, reseter_below=tr, c=c1, p_from_c=pc,
+            fn = lambda x, g, r, h, c1, pc : self.step_fprop(x, h,
+                    gater_below=g, reseter_below=r, c=c1, p_from_c=pc,
                     use_noise=use_noise, no_noise_bias=no_noise_bias)
 
         p_from_c =  utils.dot(c, self.A_cp).reshape(
