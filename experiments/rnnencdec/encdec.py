@@ -1026,6 +1026,12 @@ class Decoder(EncoderDecoderBase):
         #   (n_samples, rank_n_approx)
         approx_embeddings = self.approx_embedder(y)
 
+        # If search is not activated, annotation from some position
+        # should be used.
+        if mode != Decoder.EVALUATION and not self.state['search']:
+            assert step_num
+            c_pos = TT.minimum(step_num, c.shape[0] - 1)
+
         # Low rank embeddings are projected to contribute
         # to input, reset and update signals.
         # All the shapes if mode == evaluation:
@@ -1043,7 +1049,7 @@ class Decoder(EncoderDecoderBase):
 
             # Contributions from the encoded source sentence.
             if not self.state['search']:
-                current_c = c if mode == Decoder.EVALUATION else c[step_num]
+                current_c = c if mode == Decoder.EVALUATION else c[c_pos]
                 input_signals[level] += self.decode_inputers[level](current_c)
                 update_signals[level] += self.decode_updaters[level](current_c)
                 reset_signals[level] += self.decode_reseters[level](current_c)
@@ -1094,12 +1100,14 @@ class Decoder(EncoderDecoderBase):
                     **add_kwargs)
             if self.state['search']:
                 h, ctx, alignment = result
+                if mode == Decoder.EVALUATION:
+                    alignment = alignment.out
             else:
                 h = result
                 if mode == Decoder.EVALUATION:
                     ctx = c
                 else:
-                    ctx = ReplicateLayer(given_init_states[0].shape[0])(c[step_num]).out
+                    ctx = ReplicateLayer(given_init_states[0].shape[0])(c[c_pos]).out
             hidden_layers.append(h)
             contexts.append(ctx)
 
@@ -1180,7 +1188,7 @@ class Decoder(EncoderDecoderBase):
                     target=y,
                     mask=y_mask,
                     reg=None),
-                    alignment.out)
+                    alignment)
         else:
             raise Exception("Unknown mode for build_decoder")
 
@@ -1239,13 +1247,13 @@ class Decoder(EncoderDecoderBase):
                 name="{}_sampler_scan".format(self.prefix))
         return (outputs[0], outputs[1]), updates
 
-    def build_next_probs_predictor(self, c, y, init_states):
+    def build_next_probs_predictor(self, c, step_num, y, init_states):
         return self.build_decoder(c, y, mode=Decoder.BEAM_SEARCH,
-                given_init_states=init_states)
+                given_init_states=init_states, step_num=step_num)
 
-    def build_next_states_computer(self, c, y, init_states):
+    def build_next_states_computer(self, c, step_num, y, init_states):
         return self.build_decoder(c, y, mode=Decoder.SAMPLING,
-                given_init_states=init_states)[2:]
+                given_init_states=init_states, step_num=step_num)[2:]
 
 class RNNEncoderDecoder(object):
 
@@ -1348,6 +1356,7 @@ class RNNEncoderDecoder(object):
 
         logger.debug("Create auxiliary variables")
         self.c = TT.matrix("c")
+        self.step_num = TT.lscalar("step_num")
         self.current_states = [TT.matrix("cur_{}".format(i))
                 for i in range(self.decoder.num_levels)]
         self.gen_y = TT.lvector("gen_y")
@@ -1418,17 +1427,18 @@ class RNNEncoderDecoder(object):
     def create_next_probs_computer(self):
         if not hasattr(self, 'next_probs_fn'):
             self.next_probs_fn = theano.function(
-                    inputs=[self.c, self.gen_y] + self.current_states,
-                    outputs=[self.decoder.build_next_probs_predictor(self.c, self.gen_y, self.current_states)],
+                    inputs=[self.c, self.step_num, self.gen_y] + self.current_states,
+                    outputs=[self.decoder.build_next_probs_predictor(
+                        self.c, self.step_num, self.gen_y, self.current_states)],
                     name="next_probs_fn")
         return self.next_probs_fn
 
     def create_next_states_computer(self):
         if not hasattr(self, 'next_states_fn'):
             self.next_states_fn = theano.function(
-                    inputs=[self.c, self.gen_y] + self.current_states,
+                    inputs=[self.c, self.step_num, self.gen_y] + self.current_states,
                     outputs=self.decoder.build_next_states_computer(
-                        self.c, self.gen_y, self.current_states),
+                        self.c, self.step_num, self.gen_y, self.current_states),
                     name="next_states_fn")
         return self.next_states_fn
 
