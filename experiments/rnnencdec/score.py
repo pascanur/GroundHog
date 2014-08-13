@@ -22,10 +22,10 @@ def parse_args():
     parser.add_argument("--src", help="Source phrases")
     parser.add_argument("--trg", help="Target phrases")
     parser.add_argument("--scores", default="scores.txt", help="Save scores to")
-    parser.add_argument("--print-probs", action="store_true", default=False,
-        help="Print probabilities instead of log-likelihoods")
     parser.add_argument("--mode", default="interact",
             help="Input format, one of 'hdf5', 'txt', 'interact'")
+    parser.add_argument("--verbose", default=False, action="store_true",
+            help="Print more stuff")
     parser.add_argument("model_path", help="Path to the model")
     parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
     return parser.parse_args()
@@ -114,14 +114,23 @@ def main():
         indx_word_trgt = cPickle.load(open(state['word_indx_trgt'], 'rb'))
         src_file = open(args.src, "r")
         trg_file = open(args.trg, "r")
-        compute_probs = enc_dec.create_probs_computer()
+        compute_probs = enc_dec.create_probs_computer(return_alignment=True)
         try:
+            numpy.set_printoptions(precision=3, linewidth=150, suppress=True)
             while True:
                 src_line = next(src_file).strip()
                 trgt_line = next(trg_file).strip()
-                src_seq = parse_input(state, indx_word_src, src_line, raise_unk=True)
-                trgt_seq = parse_input(state, indx_word_trgt, trgt_line, raise_unk=True)
-                probs = compute_probs(src_seq, trgt_seq)
+                src_seq, src_words = parse_input(state,
+                        indx_word_src, src_line, raise_unk=True)
+                trgt_seq, trgt_words = parse_input(state,
+                        indx_word_trgt, trgt_line, raise_unk=True)
+                probs, alignment = compute_probs(src_seq, trgt_seq)
+                if args.verbose:
+                    print "Probs: ", probs.flatten()
+                    if alignment.ndim == 3:
+                        print "Alignment:".ljust(20), src_line, "<eos>"
+                        for i, word in enumerate(trgt_words):
+                            print "{}{}".format(word.ljust(20), alignment[i, :, 0])
                 print -numpy.sum(numpy.log(probs))
         except StopIteration:
             pass

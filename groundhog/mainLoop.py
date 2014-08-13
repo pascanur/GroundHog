@@ -283,7 +283,7 @@ class MainLoop(object):
                last_cost > .1*self.state['minerr'] and
                (time.time() - start_time)/60. < self.state['timeStop'] and
                self.state['lr'] > self.state['minlr']):
-            if (time.time() - self.save_time)/60. >= self.state['saveFreq']:
+            if self.step > 0 and (time.time() - self.save_time)/60. >= self.state['saveFreq']:
                 self.save()
                 if self.channel is not None:
                     self.channel.save()

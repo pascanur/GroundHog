@@ -180,10 +180,10 @@ class Container(object):
             else:
                 # FIXME: do not stop loading even if there's a parameter value missing
                 #raise Exception("No parameter {} given".format(p.name))
-                logger.error( "No parameter {} given: default initialization used")
-        unknown = {p.name for p in self.params} - set(vals.keys())
+                logger.error( "No parameter {} given: default initialization used".format(p.name))
+        unknown = set(vals.keys()) - {p.name for p in self.params}
         if len(unknown):
-            raise Exception("Unknown parameters {} given".format(unknown))
+            logger.error("Unknown parameters {} given".format(unknown))
 
 class Layer(Container):
     """
