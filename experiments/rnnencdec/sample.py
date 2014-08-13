@@ -140,7 +140,7 @@ def sample(lm_model, seq, n_samples,
         if normalize:
             counts = [len(s) for s in trans]
             costs = [co / cn for co, cn in zip(costs, counts)]
-        for i in range(n_samples):
+        for i in range(len(trans)):
             sen = indices_to_words(lm_model.word_indxs, trans[i])
             sentences.append(" ".join(sen))
         for i in numpy.argsort(costs):
