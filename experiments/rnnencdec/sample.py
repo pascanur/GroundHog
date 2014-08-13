@@ -59,7 +59,7 @@ class BeamSearch(object):
             last_words = (numpy.array(map(lambda t : t[-1], trans))
                     if k > 0
                     else numpy.zeros(beam_size, dtype="int64"))
-            log_probs = numpy.log(self.comp_next_probs(c, last_words, *states)[0])
+            log_probs = numpy.log(self.comp_next_probs(c, k, last_words, *states)[0])
 
             # Adjust log probs according to search restrictions
             if ignore_unk:
@@ -93,7 +93,7 @@ class BeamSearch(object):
                     new_states[level][i] = states[level][orig_idx]
                 inputs[i] = next_word
 
-            new_states = self.comp_next_states(c, inputs, *new_states)
+            new_states = self.comp_next_states(c, k, inputs, *new_states)
 
             trans = []
             costs = []
@@ -140,11 +140,12 @@ def sample(lm_model, seq, n_samples,
         if normalize:
             counts = [len(s) for s in trans]
             costs = [co / cn for co, cn in zip(costs, counts)]
-        for i in numpy.argsort(costs):
+        for i in range(n_samples):
             sen = indices_to_words(lm_model.word_indxs, trans[i])
             sentences.append(" ".join(sen))
+        for i in numpy.argsort(costs):
             if verbose:
-                print "{}: {}".format(costs[i], sentences[-1])
+                print "{}: {}".format(costs[i], sentences[i])
         return sentences, costs, trans
     elif sampler:
         sentences = []
@@ -236,15 +237,15 @@ def main():
             seq,parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
             if args.verbose:
                 print "Parsed Input:", parsed_in
-            trans, costs = sample(lm_model, seq, n_samples, sampler=sampler,
+            trans, costs, _ = sample(lm_model, seq, n_samples, sampler=sampler,
                     beam_search=beam_search, normalize=args.normalize)
             best = numpy.argmin(costs)
             print >>ftrans, trans[best]
             if args.verbose:
                 print "Translation:", trans[best]
             total_cost += costs[best]
-            if i % 100 == 0:
-                sys.stdout.flush()
+            if (i + 1)  % 100 == 0:
+                ftrans.flush()
                 logger.debug("Current speed is {} per sentence".
                         format((time.time() - start_time) / (i + 1)))
         print "Total cost of the translations: {}".format(total_cost)
