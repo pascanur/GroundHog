@@ -9,7 +9,7 @@ def load_timings(path, y="cost2_p_expl", start=0, finish=3000000, window=100, ho
     tm = numpy.load(path)
     num_steps = min(tm['step'], finish)
     df = pandas.DataFrame({k : tm[k] for k in [y, 'time_step']})[start:num_steps]
-    one_step = df['time_step'].median() / 3600.0
+    one_step = df['time_step'][-window:].median() / 3600.0
     print "Median time for one step is {} hours".format(one_step)
     if hours:
         df.index = (start + numpy.arange(0, df.index.shape[0])) * one_step
