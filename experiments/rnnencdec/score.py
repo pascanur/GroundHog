@@ -127,9 +127,10 @@ def main():
                 probs, alignment = compute_probs(src_seq, trgt_seq)
                 if args.verbose:
                     print "Probs: ", probs.flatten()
-                    print "Alignment:".ljust(20), src_line, "<eos>"
-                    for i, word in enumerate(trgt_words):
-                        print "{}{}".format(word.ljust(20), alignment[i, :, 0])
+                    if alignment.ndim == 3:
+                        print "Alignment:".ljust(20), src_line, "<eos>"
+                        for i, word in enumerate(trgt_words):
+                            print "{}{}".format(word.ljust(20), alignment[i, :, 0])
                 print -numpy.sum(numpy.log(probs))
         except StopIteration:
             pass
