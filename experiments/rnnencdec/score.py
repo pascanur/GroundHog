@@ -22,6 +22,8 @@ def parse_args():
     parser.add_argument("--src", help="Source phrases")
     parser.add_argument("--trg", help="Target phrases")
     parser.add_argument("--scores", default="scores.txt", help="Save scores to")
+    parser.add_argument("--allow-unk", default=False, action="store_true",
+            help="Allow unknown words in the input")
     parser.add_argument("--mode", default="interact",
             help="Input format, one of 'hdf5', 'txt', 'interact'")
     parser.add_argument("--verbose", default=False, action="store_true",
@@ -99,8 +101,8 @@ def main():
                 compute_probs = enc_dec.create_probs_computer()
                 src_line = raw_input('Source sequence: ')
                 trgt_line = raw_input('Target sequence: ')
-                src_seq = parse_input(state, indx_word_src, src_line, raise_unk=True)
-                trgt_seq = parse_input(state, indx_word_trgt, trgt_line, raise_unk=True)
+                src_seq = parse_input(state, indx_word_src, src_line, raise_unk=not args.allow_unk)
+                trgt_seq = parse_input(state, indx_word_trgt, trgt_line, raise_unk=not args.allow_unk)
                 print "Binarized source: ", src_seq
                 print "Binarized target: ", trgt_seq
                 probs = compute_probs(src_seq, trgt_seq)
@@ -121,9 +123,9 @@ def main():
                 src_line = next(src_file).strip()
                 trgt_line = next(trg_file).strip()
                 src_seq, src_words = parse_input(state,
-                        indx_word_src, src_line, raise_unk=True)
+                        indx_word_src, src_line, raise_unk=not args.allow_unk)
                 trgt_seq, trgt_words = parse_input(state,
-                        indx_word_trgt, trgt_line, raise_unk=True)
+                        indx_word_trgt, trgt_line, raise_unk=not args.allow_unk)
                 probs, alignment = compute_probs(src_seq, trgt_seq)
                 if args.verbose:
                     print "Probs: ", probs.flatten()
