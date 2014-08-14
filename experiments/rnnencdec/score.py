@@ -117,6 +117,7 @@ def main():
         compute_probs = enc_dec.create_probs_computer(return_alignment=True)
         try:
             numpy.set_printoptions(precision=3, linewidth=150, suppress=True)
+            i = 0
             while True:
                 src_line = next(src_file).strip()
                 trgt_line = next(trg_file).strip()
@@ -131,6 +132,9 @@ def main():
                         print "Alignment:".ljust(20), src_line, "<eos>"
                         for i, word in enumerate(trgt_words):
                             print "{}{}".format(word.ljust(20), alignment[i, :, 0])
+                i += 1
+                if i % 100 == 0:
+                    logger.debug(i)
                 print -numpy.sum(numpy.log(probs))
         except StopIteration:
             pass
