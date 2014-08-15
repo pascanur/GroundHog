@@ -311,6 +311,7 @@ class RecurrentLayerWithSearch(Layer):
                    reseter_below=None,
                    mask=None,
                    c=None,
+                   c_mask=None,
                    p_from_c=None,
                    use_noise=True,
                    no_noise_bias=False,
@@ -379,6 +380,10 @@ class RecurrentLayerWithSearch(Layer):
 
         # Apply non-linearity and project to energy.
         energy = TT.exp(utils.dot(TT.tanh(p), D_pe)).reshape((source_len, target_num))
+        if c_mask:
+            # This is used for batches only, that is target_num == source_num
+            energy *= c_mask
+        # c_mask = dbg_hook(lambda _, x : logger.debug("energy shape is {}".format(x)), c_mask)
         # energy = dbg_hook(lambda _, x : logger.debug("energy shape is {}".format(x)), energy)
 
         # Calculate energy sums.
@@ -428,6 +433,7 @@ class RecurrentLayerWithSearch(Layer):
               gater_below=None,
               reseter_below=None,
               c=None,
+              c_mask=None,
               nsteps=None,
               batch_size=None,
               use_noise=True,
@@ -461,22 +467,27 @@ class RecurrentLayerWithSearch(Layer):
                 init_state = TT.alloc(floatX(0), self.n_hids)
 
         if mask:
-            inps = [state_below, mask, updater_below, reseter_below]
-            fn = lambda x, m, g, r, h, c1, pc : self.step_fprop(x, h, mask=m,
-                    gater_below=g, reseter_below=r, c=c1, p_from_c=pc,
+            sequences = [state_below, mask, updater_below, reseter_below]
+            non_sequences = [c_mask]
+            fn = lambda x, m, g, r, h, c1, cm, pc : self.step_fprop(x, h, mask=m,
+                    gater_below=g, reseter_below=r,
+                    c=c1, p_from_c=pc, c_mask=cm,
                     use_noise=use_noise, no_noise_bias=no_noise_bias)
         else:
-            inps = [state_below, updater_below, reseter_below]
+            sequences = [state_below, updater_below, reseter_below]
+            non_sequences = []
             fn = lambda x, g, r, h, c1, pc : self.step_fprop(x, h,
-                    gater_below=g, reseter_below=r, c=c1, p_from_c=pc,
+                    gater_below=g, reseter_below=r,
+                    c=c1, p_from_c=pc,
                     use_noise=use_noise, no_noise_bias=no_noise_bias)
 
         p_from_c =  utils.dot(c, self.A_cp).reshape(
                 (c.shape[0], c.shape[1], self.n_hids))
+        non_sequences = [c] + non_sequences + [p_from_c]
 
         rval, updates = theano.scan(fn,
-                        sequences=inps,
-                        non_sequences=[c, p_from_c],
+                        sequences=sequences,
+                        non_sequences=non_sequences,
                         outputs_info=[init_state, None, None],
                         name='layer_%s'%self.name,
                         truncate_gradient=truncate_gradient,
@@ -962,6 +973,7 @@ class Decoder(EncoderDecoderBase):
                     **self.default_kwargs)
 
     def build_decoder(self, c, y,
+            c_mask=None,
             y_mask=None,
             step_num=None,
             mode=EVALUATION,
@@ -973,6 +985,9 @@ class Decoder(EncoderDecoderBase):
             representations produced by an encoder.
             (n_samples, dim) matrix if mode == sampling or
             (max_seq_len, batch_size, dim) matrix if mode == evaluation
+
+        :param c_mask:
+            if mode == evaluation a 0/1 matrix identifying valid positions in c
 
         :param y:
             if mode == evaluation
@@ -1088,6 +1103,7 @@ class Decoder(EncoderDecoderBase):
                             nsteps=y.shape[0]))
             if self.state['search']:
                 add_kwargs['c'] = c
+                add_kwargs['c_mask'] = c_mask
                 if mode != Decoder.EVALUATION:
                     add_kwargs['step_num'] = step_num
             result = self.transitions[level](
@@ -1319,9 +1335,8 @@ class RNNEncoderDecoder(object):
         self.decoder.create_layers()
         logger.debug("Build log-likelihood computation graph")
         self.predictions, self.alignment = self.decoder.build_decoder(
-                c=Concatenate(axis=2)(*training_c_components),
-                y=self.y,
-                y_mask=self.y_mask)
+                c=Concatenate(axis=2)(*training_c_components), c_mask=self.x_mask,
+                y=self.y, y_mask=self.y_mask)
 
         # Annotation for sampling
         sampling_c_components = []
