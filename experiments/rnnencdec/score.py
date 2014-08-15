@@ -5,6 +5,7 @@ import cPickle
 import traceback
 import logging
 import time
+import sys
 
 import numpy
 
@@ -22,6 +23,8 @@ def parse_args():
     parser.add_argument("--src", help="Source phrases")
     parser.add_argument("--trg", help="Target phrases")
     parser.add_argument("--scores", default="scores.txt", help="Save scores to")
+    parser.add_argument("--print-probs", default=False, action="store_true",
+            help="Print probs instead of log probs")
     parser.add_argument("--allow-unk", default=False, action="store_true",
             help="Allow unknown words in the input")
     parser.add_argument("--mode", default="interact",
@@ -55,10 +58,13 @@ def main():
     lm_model.load(args.model_path)
 
     if args.mode == "hdf5":
-        assert args.src and args.trg
+        if args.src or args.trg:
+            assert args.src and args.trg
+            state['source'] = [args.src]
+            state['target'] = [args.trg]
+        else:
+            logger.info("Using the training data")
 
-        state['source'] = [args.src]
-        state['target'] = [args.trg]
         data_iter = get_batch_iterator(state, rng)
         data_iter.start(0)
         score_file = open(args.scores, "w")
@@ -83,7 +89,7 @@ def main():
             n_samples += batch['x'].shape[1]
             count += 1
 
-            if count % 1000 == 0:
+            if count % 100 == 0:
                 score_file.flush()
                 logger.debug("Scores flushed")
             logger.debug("{} batches, {} samples, {} per sample; example scores: {}".format(
@@ -136,6 +142,7 @@ def main():
                             print "{}{}".format(word.ljust(20), alignment[i, :, 0])
                 i += 1
                 if i % 100 == 0:
+                    sys.stdout.flush()
                     logger.debug(i)
                 print -numpy.sum(numpy.log(probs))
         except StopIteration:
