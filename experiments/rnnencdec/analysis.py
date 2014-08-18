@@ -24,7 +24,7 @@ def show_timings(axes, timings, legend, y="cost2_p_expl", hours=False):
     #axes.set_ylim(0, 20)
     axes.set_xlabel("hours" if hours else "iterations")
     axes.set_ylabel("log_2 likelihood")
-    axes.legend(legend)
+    axes.legend(legend, loc='best')
 
 def load_n_show_timings(axes, timings, legend, **kwargs):
     datas = [load_timings(path, **kwargs) for path in timings]
