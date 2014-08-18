@@ -85,6 +85,8 @@ def parse_args():
             help="Allow unknown words in the input")
     parser.add_argument("--mode", default="interact",
             help="Processing mode, one of 'batch', 'txt', 'interact'")
+    parser.add_argument("--n-batches", default=-1, type=int,
+            help="Score only first n batches")
     parser.add_argument("--verbose", default=False, action="store_true",
             help="Print more stuff")
     parser.add_argument("model_path", help="Path to the model")
@@ -118,7 +120,7 @@ def main():
 
     if args.mode == "batch":
         data_given = args.src or args.trg
-        txt = data_given and args.src.endswith(".txt") and args.trg.endswith(".txt")
+        txt = data_given and not (args.src.endswith(".h5") and args.trg.endswith(".h5"))
         if data_given and not txt:
             state['source'] = [args.src]
             state['target'] = [args.trg]
@@ -140,9 +142,11 @@ def main():
         count = 0
         n_samples = 0
         logger.info('Scoring phrases')
-        for batch in data_iter:
+        for i, batch in enumerate(data_iter):
             if batch == None:
                 continue
+            if args.n_batches >= 0 and i == args.n_batches:
+                break
             st = time.time()
             [scores] = scorer(batch['x'], batch['y'],
                     batch['x_mask'], batch['y_mask'])
