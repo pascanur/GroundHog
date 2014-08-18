@@ -132,11 +132,12 @@ def indices_to_words(i2w, seq):
 
 def sample(lm_model, seq, n_samples,
         sampler=None, beam_search=None,
-        normalize=False, alpha=1, verbose=False):
+        ignore_unk=False, normalize=False,
+        alpha=1, verbose=False):
     if beam_search:
         sentences = []
         trans, costs = beam_search.search(seq, n_samples,
-                ignore_unk=True, minlen=len(seq) / 2)
+                ignore_unk=ignore_unk, minlen=len(seq) / 2)
         if normalize:
             counts = [len(s) for s in trans]
             costs = [co / cn for co, cn in zip(costs, counts)]
@@ -182,6 +183,8 @@ def parse_args():
     parser.add_argument("--state", help="State to use")
     parser.add_argument("--state-fn", help="Initialization function for state", default="prototype_state")
     parser.add_argument("--beam-search", help="Beam size, turns on beam-search", type=int)
+    parser.add_argument("--ignore-unk", default=False, action="store_true",
+            help="Ignore unknown words")
     parser.add_argument("--source", help="File of source sentences", default="")
     parser.add_argument("--trans", help="File to save translations in", default="")
     parser.add_argument("--normalize", help="Normalize log-prob with the word count",
@@ -238,7 +241,7 @@ def main():
             if args.verbose:
                 print "Parsed Input:", parsed_in
             trans, costs, _ = sample(lm_model, seq, n_samples, sampler=sampler,
-                    beam_search=beam_search, normalize=args.normalize)
+                    beam_search=beam_search, ignore_unk=args.ignore_unk, normalize=args.normalize)
             best = numpy.argmin(costs)
             print >>ftrans, trans[best]
             if args.verbose:
@@ -268,7 +271,8 @@ def main():
                 continue
 
             sample(lm_model, seq, n_samples, sampler=sampler,
-                    beam_search=beam_search, normalize=args.normalize,
+                    beam_search=beam_search,
+                    ignore_unk=args.ignore_unk, normalize=args.normalize,
                     alpha=alpha, verbose=True)
 
 if __name__ == "__main__":

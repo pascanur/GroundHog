@@ -17,18 +17,74 @@ from experiments.rnnencdec import\
 
 logger = logging.getLogger(__name__)
 
+class BatchTxtIterator(object):
+
+    def __init__(self, state, txt, indx,  batch_size, raise_unk):
+        self.__dict__.update(locals())
+        self.__dict__.pop('self')
+
+    def start(self):
+        self.txt_file = open(self.txt)
+
+    def _pack(self, seqs):
+        num = len(seqs)
+        max_len = max(map(len, seqs))
+        x = numpy.zeros((num, max_len), dtype="int64")
+        x_mask = numpy.zeros((num, max_len), dtype="float32")
+        for i, seq in enumerate(seqs):
+            x[i, :len(seq)] = seq
+            x_mask[i, :len(seq)] = 1.0
+        return x.T, x_mask.T
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        seqs = []
+        try:
+            while len(seqs) < self.batch_size:
+                line = next(self.txt_file).strip()
+                seq, _ = parse_input(self.state, self.indx, line, raise_unk=self.raise_unk)
+                seqs.append(seq)
+            return self._pack(seqs)
+        except StopIteration:
+            if not seqs:
+                raise StopIteration()
+            return self._pack(seqs)
+
+class BatchBiTxtIterator(object):
+
+    def __init__(self, state, src, indx_src, trg, indx_trg, batch_size, raise_unk):
+        self.__dict__.update(locals())
+        self.__dict__.pop('self')
+        self.src_iter = BatchTxtIterator(state, src, indx_src, batch_size, raise_unk)
+        self.trg_iter = BatchTxtIterator(state, trg, indx_trg, batch_size, raise_unk)
+
+    def start(self):
+        self.src_iter.start()
+        self.trg_iter.start()
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        x, x_mask = next(self.src_iter)
+        y, y_mask = next(self.trg_iter)
+        assert x.shape[1] == y.shape[1]
+        return dict(x=x, x_mask=x_mask, y=y, y_mask=y_mask)
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", help="State to use")
     parser.add_argument("--src", help="Source phrases")
     parser.add_argument("--trg", help="Target phrases")
-    parser.add_argument("--scores", default="scores.txt", help="Save scores to")
+    parser.add_argument("--scores", default=None, help="Save scores to")
     parser.add_argument("--print-probs", default=False, action="store_true",
             help="Print probs instead of log probs")
     parser.add_argument("--allow-unk", default=False, action="store_true",
             help="Allow unknown words in the input")
     parser.add_argument("--mode", default="interact",
-            help="Input format, one of 'hdf5', 'txt', 'interact'")
+            help="Processing mode, one of 'batch', 'txt', 'interact'")
     parser.add_argument("--verbose", default=False, action="store_true",
             help="Print more stuff")
     parser.add_argument("model_path", help="Path to the model")
@@ -57,17 +113,27 @@ def main():
     lm_model = enc_dec.create_lm_model()
     lm_model.load(args.model_path)
 
-    if args.mode == "hdf5":
-        if args.src or args.trg:
-            assert args.src and args.trg
+    indx_word_src = cPickle.load(open(state['word_indx'],'rb'))
+    indx_word_trgt = cPickle.load(open(state['word_indx_trgt'], 'rb'))
+
+    if args.mode == "batch":
+        data_given = args.src or args.trg
+        txt = data_given and args.src.endswith(".txt") and args.trg.endswith(".txt")
+        if data_given and not txt:
             state['source'] = [args.src]
             state['target'] = [args.trg]
-        else:
+        if not data_given and not txt:
             logger.info("Using the training data")
+        if txt:
+            data_iter = BatchBiTxtIterator(state,
+                    args.src, indx_word_src, args.trg, indx_word_trgt,
+                    state['bs'], raise_unk=not args.allow_unk)
+            data_iter.start()
+        else:
+            data_iter = get_batch_iterator(state, rng)
+            data_iter.start(0)
 
-        data_iter = get_batch_iterator(state, rng)
-        data_iter.start(0)
-        score_file = open(args.scores, "w")
+        score_file = open(args.scores, "w") if args.scores else sys.stdout
 
         scorer = enc_dec.create_scorer(batch=True)
 
@@ -97,11 +163,8 @@ def main():
 
         logger.info("Done")
         score_file.flush()
-        score_file.close()
     elif args.mode == "interact":
         scorer = enc_dec.create_scorer()
-        indx_word_src = cPickle.load(open(state['word_indx'],'rb'))
-        indx_word_trgt = cPickle.load(open(state['word_indx_trgt'], 'rb'))
         while True:
             try:
                 compute_probs = enc_dec.create_probs_computer()
@@ -118,8 +181,6 @@ def main():
     elif args.mode == "txt":
         assert args.src and args.trg
         scorer = enc_dec.create_scorer()
-        indx_word_src = cPickle.load(open(state['word_indx'],'rb'))
-        indx_word_trgt = cPickle.load(open(state['word_indx_trgt'], 'rb'))
         src_file = open(args.src, "r")
         trg_file = open(args.trg, "r")
         compute_probs = enc_dec.create_probs_computer(return_alignment=True)
