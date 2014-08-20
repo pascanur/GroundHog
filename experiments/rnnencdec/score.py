@@ -76,9 +76,14 @@ class BatchBiTxtIterator(object):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", help="State to use")
+
+    # Paths
     parser.add_argument("--src", help="Source phrases")
     parser.add_argument("--trg", help="Target phrases")
     parser.add_argument("--scores", default=None, help="Save scores to")
+    parser.add_argument("model_path", help="Path to the model")
+
+    # Options
     parser.add_argument("--print-probs", default=False, action="store_true",
             help="Print probs instead of log probs")
     parser.add_argument("--allow-unk", default=False, action="store_true",
@@ -89,8 +94,12 @@ def parse_args():
             help="Score only first n batches")
     parser.add_argument("--verbose", default=False, action="store_true",
             help="Print more stuff")
-    parser.add_argument("model_path", help="Path to the model")
+    parser.add_argument("--y-noise",  type=float,
+            help="Probability for a word to be replaced by a random word")
+
+    # Additional arguments
     parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
+
     return parser.parse_args()
 
 def main():
@@ -147,6 +156,14 @@ def main():
                 continue
             if args.n_batches >= 0 and i == args.n_batches:
                 break
+
+            if args.y_noise:
+                y = batch['y']
+                random_words = numpy.random.randint(0, 100, y.shape).astype("int64")
+                change_mask = numpy.random.binomial(1, args.y_noise, y.shape).astype("int64")
+                y = change_mask * random_words + (1 - change_mask) * y
+                batch['y'] = y
+
             st = time.time()
             [scores] = scorer(batch['x'], batch['y'],
                     batch['x_mask'], batch['y_mask'])
