@@ -8,6 +8,10 @@ __authors__ = ("Razvan Pascanu "
 __contact__ = "Razvan Pascanu <r.pascanu@gmail>"
 
 import numpy
+import logging
+
+logger = logging.getLogger(__name__)
+
 class LMIterator(object):
 
     def __init__(self,
@@ -140,6 +144,10 @@ class LMIterator(object):
 
     def get_length(self):
         return (self.data_len-self.shift) // (self.batch_size*self.seq_len)
+
+    def start(self, start_offset):
+        logger.debug("Not supported")
+        self.next_offset = -1
 
     def __iter__(self):
         return self
