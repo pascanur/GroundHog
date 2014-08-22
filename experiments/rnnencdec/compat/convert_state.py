@@ -35,6 +35,8 @@ def main():
     if args.conv_fn:
         eval(args.conv_fn)(state)
 
+    if not args.dst:
+        args.dst = args.src
     with open(args.dst, 'w') as dst:
         cPickle.dump(state, dst)
 
