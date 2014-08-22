@@ -58,11 +58,9 @@ def create_padded_batch(state, x, y, return_dict=False):
     # Similar length for all target sequences
     my = numpy.minimum(state['seqlen'], max([len(xx) for xx in y[0]]))+1
     # Just batch size
-    #n = state['bs'] # FIXME: may become inefficient later with a large minibatch
     n = x[0].shape[0]
 
     X = numpy.zeros((mx, n), dtype='int64')
-    Y0 = numpy.zeros((my, n), dtype='int64')
     Y = numpy.zeros((my, n), dtype='int64')
     Xmask = numpy.zeros((mx, n), dtype='float32')
     Ymask = numpy.zeros((my, n), dtype='float32')
@@ -71,13 +69,7 @@ def create_padded_batch(state, x, y, return_dict=False):
     for idx in xrange(len(x[0])):
         # Insert sequence idx in a column of matrix X
         if mx < len(x[0][idx]):
-            # If sequence idx it too long,
-            # we either choose random subsequence or just take a prefix
-            if state['randstart']:
-                stx = numpy.random.randint(0, len(x[0][idx]) - mx)
-            else:
-                stx = 0
-            X[:mx, idx] = x[0][idx][stx:stx+mx]
+            X[:mx, idx] = x[0][idx][:mx]
         else:
             X[:len(x[0][idx]), idx] = x[0][idx][:mx]
 
@@ -93,14 +85,12 @@ def create_padded_batch(state, x, y, return_dict=False):
 
     # Fill Y and Ymask in the same way as X and Xmask in the previous loop
     for idx in xrange(len(y[0])):
-        Y0[:len(y[0][idx]), idx] = y[0][idx][:my]
+        Y[:len(y[0][idx]), idx] = y[0][idx][:my]
         if len(y[0][idx]) < my:
-            Y0[len(y[0][idx]):, idx] = state['null_sym_target']
+            Y[len(y[0][idx]):, idx] = state['null_sym_target']
         Ymask[:len(y[0][idx]), idx] = 1.
         if len(y[0][idx]) < my:
             Ymask[len(y[0][idx]), idx] = 1.
-
-    Y = Y0.copy()
 
     null_inputs = numpy.zeros(X.shape[1])
 
@@ -113,7 +103,7 @@ def create_padded_batch(state, x, y, return_dict=False):
             null_inputs[idx] = 1
         if Xmask[-1,idx] and X[-1,idx] != state['null_sym_source']:
             null_inputs[idx] = 1
-        if Ymask[-1,idx] and Y0[-1,idx] != state['null_sym_target']:
+        if Ymask[-1,idx] and Y[-1,idx] != state['null_sym_target']:
             null_inputs[idx] = 1
 
     valid_inputs = 1. - null_inputs
@@ -121,16 +111,13 @@ def create_padded_batch(state, x, y, return_dict=False):
     # Leave only valid inputs
     X = X[:,valid_inputs.nonzero()[0]]
     Y = Y[:,valid_inputs.nonzero()[0]]
-    Y0 = Y0[:,valid_inputs.nonzero()[0]]
     Xmask = Xmask[:,valid_inputs.nonzero()[0]]
     Ymask = Ymask[:,valid_inputs.nonzero()[0]]
     if len(valid_inputs.nonzero()[0]) <= 0:
         return None
 
     if return_dict:
-        # Are Y and Y0 different?
-        return {'x' : X, 'x_mask' : Xmask,
-            'y': Y, 'y_mask' : Ymask}
+        return {'x' : X, 'x_mask' : Xmask, 'y': Y, 'y_mask' : Ymask}
     else:
         return X, Xmask, Y, Ymask
 
@@ -376,29 +363,23 @@ class RecurrentLayerWithSearch(Layer):
 
         # Sum projections - broadcasting happens at the dimension 1.
         p = p_from_h + p_from_c
-        # p = dbg_hook(lambda _, x : logger.debug("p shape is {}".format(x.shape)), p)
 
         # Apply non-linearity and project to energy.
         energy = TT.exp(utils.dot(TT.tanh(p), D_pe)).reshape((source_len, target_num))
         if c_mask:
             # This is used for batches only, that is target_num == source_num
             energy *= c_mask
-        # c_mask = dbg_hook(lambda _, x : logger.debug("energy shape is {}".format(x)), c_mask)
-        # energy = dbg_hook(lambda _, x : logger.debug("energy shape is {}".format(x)), energy)
 
         # Calculate energy sums.
         normalizer = energy.sum(axis=0)
-        # normalizer = dbg_hook(lambda _, x : logger.debug("normalizer shape is {}".format(x)), normalizer)
 
         # Get probabilities.
         probs = energy / normalizer
-        # probs = dbg_hook(lambda _, x : logger.debug("probs are {}".format(x.flatten())), probs)
 
         # Calculate weighted sums of source annotations.
         # If target_num == 1, c shoulds broadcasted at the 1st dimension.
         # Probabilities are broadcasted at the 2nd dimension.
         ctx = (c * probs.dimshuffle(0, 1, 'x')).sum(axis=0)
-        # ctx = dbg_hook(lambda _, x : logger.debug("ctx shape is {}".format(x.shape)), ctx)
 
         state_below += self.c_inputer(ctx).out
         reseter_below += self.c_reseter(ctx).out
@@ -537,29 +518,6 @@ def none_if_zero(x):
     if x == 0:
         return None
     return x
-
-def dbg_sum(text, x):
-    if not isinstance(x, TT.TensorVariable):
-        x.out = theano.printing.Print(text, attrs=['sum'])(x.out)
-        return x
-    else:
-        return theano.printing.Print(text, attrs=['sum'])(x)
-
-def dbg_hook(hook, x):
-    if not isinstance(x, TT.TensorVariable):
-        x.out = theano.printing.Print(global_fn=hook)(x.out)
-        return x
-    else:
-        return theano.printing.Print(global_fn=hook)(x)
-
-def hid_hook(_, x, msg="repr sums"):
-    if x.ndim == 3:
-        x = x[:, 0, :]
-    if x.ndim == 2:
-        x = x.sum(axis=1)
-    else:
-        x = x.sum()
-    logger.debug("{}: {}".format(msg, x))
 
 class Maxout(object):
 
@@ -732,14 +690,25 @@ class Encoder(EncoderDecoderBase):
             return_hidden_layers=False):
         """Create the computational graph of the RNN Encoder
 
-        :param x: input variable, either vector of word indices or
-        matrix of word indices, where each column is a sentence
+        :param x:
+            input variable, either vector of word indices or
+            matrix of word indices, where each column is a sentence
 
-        :param x_mask: when x is a matrix and input sequences are
-        of variable length, this 1/0 matrix is used to specify
-        the matrix positions where the input actually is
+        :param x_mask:
+            when x is a matrix and input sequences are
+            of variable length, this 1/0 matrix is used to specify
+            the matrix positions where the input actually is
 
-        :param use_noise: turns on addition of noise to weights
+        :param use_noise:
+            turns on addition of noise to weights
+            (UNTESTED)
+
+        :param approx_embeddings:
+            forces encoder to use given embeddings instead of its own
+
+        :param return_hidden_layers:
+            if True, encoder returns all the activations of the hidden layer
+            (WORKS ONLY IN NON-HIERARCHICAL CASE)
         """
 
         # Low rank embeddings of all the input words.
@@ -751,7 +720,6 @@ class Encoder(EncoderDecoderBase):
         #   (seq_len, rank_n_approx)
         if not approx_embeddings:
             approx_embeddings = self.approx_embedder(x)
-        # approx_embeddings = dbg_hook(partial(hid_hook, msg="embeddings"), approx_embeddings)
 
         # Low rank embeddings are projected to contribute
         # to input, reset and update signals.
@@ -786,8 +754,6 @@ class Encoder(EncoderDecoderBase):
                     use_noise=use_noise))
         if return_hidden_layers:
             assert self.state['encoder_stack'] == 1
-            # hidden_layers[0] = dbg_hook(partial(hid_hook, msg="{} repr sums".format(self.prefix)),
-            #        hidden_layers[0])
             return hidden_layers[0]
 
         # If we no stack of RNN but only a usual one,
@@ -1011,8 +977,6 @@ class Decoder(EncoderDecoderBase):
             sampling temperature
         """
 
-        # y = dbg_hook(lambda _, x : logger.debug("y shape: {}".format(x.shape)), y)
-
         # Check parameter consistency
         if mode == Decoder.EVALUATION:
             assert not given_init_states
@@ -1029,10 +993,12 @@ class Decoder(EncoderDecoderBase):
         #   (max_seq_len, batch_size, dim)
         # Shape if mode != evaluation
         #   (n_samples, dim)
-        if not self.state['search'] and mode == Decoder.EVALUATION:
-            c = PadLayer(y.shape[0])(c)
-        # dbg_hook(lambda _, x : logger.debug("forward repr sum: {}".format(x[:, :, :self.state['dim']].sum(2).flatten())), c)
-        # dbg_hook(lambda _, x : logger.debug("backward repr sum: {}".format(x[:, :, self.state['dim']:].sum(2).flatten())), c)
+        if not self.state['search']:
+            if mode == Decoder.EVALUATION:
+                c = PadLayer(y.shape[0])(c)
+            else:
+                assert step_num
+                c_pos = TT.minimum(step_num, c.shape[0] - 1)
 
         # Low rank embeddings of all the input words.
         # Shape if mode == evaluation
@@ -1040,12 +1006,6 @@ class Decoder(EncoderDecoderBase):
         # Shape if mode != evaluation
         #   (n_samples, rank_n_approx)
         approx_embeddings = self.approx_embedder(y)
-
-        # If search is not activated, annotation from some position
-        # should be used.
-        if mode != Decoder.EVALUATION and not self.state['search']:
-            assert step_num
-            c_pos = TT.minimum(step_num, c.shape[0] - 1)
 
         # Low rank embeddings are projected to contribute
         # to input, reset and update signals.
@@ -1080,7 +1040,6 @@ class Decoder(EncoderDecoderBase):
             for level in range(self.num_levels):
                 init_c = c[0, :, -self.state['dim']:]
                 init_states.append(self.initializers[level](init_c))
-        # init_states[0] = dbg_hook(partial(hid_hook, msg="init sum"), init_states[0])
 
         # Hidden layers' states.
         # Shapes if mode == evaluation:
@@ -1143,7 +1102,6 @@ class Decoder(EncoderDecoderBase):
         #   (n_samples, dim_r)
         # ... where dim_r depends on 'deep_out' option.
         readout = self.repr_readout(contexts[0])
-        # readout = dbg_hook(lambda _, x : logger.debug("readout shape: {}".format(x.sum(1))), readout)
         for level in range(self.num_levels):
             if mode != Decoder.EVALUATION:
                 read_from = init_states[level]

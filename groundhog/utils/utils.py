@@ -182,3 +182,10 @@ def dot(inp, matrix):
         return TT.dot(inp.reshape((shape0*shape1, shape2)), matrix)
     else:
         return TT.dot(inp, matrix)
+
+def dbg_hook(hook, x):
+    if not isinstance(x, TT.TensorVariable):
+        x.out = theano.printing.Print(global_fn=hook)(x.out)
+        return x
+    else:
+        return theano.printing.Print(global_fn=hook)(x)
