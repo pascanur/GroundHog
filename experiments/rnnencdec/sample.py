@@ -120,6 +120,8 @@ class BeamSearch(object):
             else:
                 logger.error("Translation failed")
 
+        fin_trans = numpy.array(fin_trans)[numpy.argsort(fin_costs)]
+        fin_costs = numpy.array(sorted(fin_costs))
         return fin_trans, fin_costs
 
 def indices_to_words(i2w, seq):
@@ -144,7 +146,7 @@ def sample(lm_model, seq, n_samples,
         for i in range(len(trans)):
             sen = indices_to_words(lm_model.word_indxs, trans[i])
             sentences.append(" ".join(sen))
-        for i in numpy.argsort(costs):
+        for i in range(len(costs)):
             if verbose:
                 print "{}: {}".format(costs[i], sentences[i])
         return sentences, costs, trans
