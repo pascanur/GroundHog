@@ -3,7 +3,6 @@ import logging
 import pprint
 import operator
 import itertools
-from functools import partial
 
 import theano
 import theano.tensor as TT
