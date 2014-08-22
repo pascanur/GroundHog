@@ -23,6 +23,7 @@ class Unbuffered:
         return getattr(self.stream, attr)
 
 import sys
+import traceback
 sys.stdout = Unbuffered(sys.stdout)
 
 # Generic imports
@@ -47,7 +48,8 @@ class MainLoop(object):
                  hooks=None,
                  reset=-1,
                  train_cost=False,
-                 validate_postprocess=None):
+                 validate_postprocess=None,
+                 l2_params=False):
         """
         :type train_data: groundhog dataset object
         :param train_data: data iterator used for training
@@ -89,6 +91,9 @@ class MainLoop(object):
         :type validate_postprocess: None or function
         :param validate_postprocess: function called on the validation cost
             every time before applying the logic of the early stopper
+
+        :type l2_params: bool
+        :param l2_params: save parameter norms at each step
         """
         ###################
         # Step 0. Set parameters
@@ -104,6 +109,7 @@ class MainLoop(object):
         self.old_cost = 1e21
         self.validate_postprocess = validate_postprocess
         self.patience = state['patience']
+        self.l2_params = l2_params
 
         self.train_cost = train_cost
 
@@ -124,9 +130,12 @@ class MainLoop(object):
             self.state[pname] = 1e20
 
         n_elems = state['loopIters'] // state['trainFreq'] + 1
-        self.timings = {}
+        self.timings = {'step' : 0, 'next_offset' : -1}
         for name in self.algo.return_names:
             self.timings[name] = numpy.zeros((n_elems,), dtype='float32')
+        if self.l2_params:
+            for param in model.params:
+                self.timings["l2_" + param.name] = numpy.zeros(n_elems, dtype="float32")
         n_elems = state['loopIters'] // state['validFreq'] + 1
         for pname in model.valid_costs:
             self.state['valid'+pname] = 1e20
@@ -211,6 +220,9 @@ class MainLoop(object):
         self.state['testtime'] = float(time.time()-self.start_time)/60.
 
     def save(self):
+        start = time.time()
+        print "Saving the model..."
+
         # ignore keyboard interrupt while saving
         s = signal.signal(signal.SIGINT, signal.SIG_IGN)
         numpy.savez(self.state['prefix']+'timing.npz',
@@ -224,36 +236,54 @@ class MainLoop(object):
         self.save_iter += 1
         signal.signal(signal.SIGINT, s)
 
+        print "Model saved, took {}".format(time.time() - start)
+
     # FIXME
-    def load(self, name=None):
-        if name is None:
-            name = self.state['prefix'] + 'model.npz'
+    def load(self, model_path=None, timings_path=None):
+        if model_path is None:
+            model_path = self.state['prefix'] + 'model.npz'
+        if timings_path is None:
+            timings_path = self.state['prefix'] + 'timing.npz'
         try:
-            self.model.load(name)
+            self.model.load(model_path)
         except Exception:
-            print 'Corrupted save file'
+            print 'mainLoop: Corrupted model file'
+            traceback.print_exc()
+        try:
+            self.timings = dict(numpy.load(timings_path).iteritems())
+        except Exception:
+            print 'mainLoop: Corrupted timings file'
+            traceback.print_exc()
 
     def main(self):
+        assert self.reset == -1
+
         print_mem('start')
         self.state['gotNaN'] = 0
-        self.start_time = time.time()
+        start_time = time.time()
+        self.start_time = start_time
         self.batch_start_time = time.time()
-        self.step = 0
+
+        self.step = int(self.timings['step'])
+        self.algo.step = self.step
+
         self.save_iter = 0
         self.save()
         if self.channel is not None:
             self.channel.save()
         self.save_time = time.time()
+
         last_cost = 1.
-        start_time = time.time()
-        self.start_time = start_time
         self.state['clr'] = self.state['lr']
+        self.train_data.start(self.timings['next_offset']
+                if 'next_offset' in self.timings
+                else -1)
 
         while (self.step < self.state['loopIters'] and
                last_cost > .1*self.state['minerr'] and
                (time.time() - start_time)/60. < self.state['timeStop'] and
                self.state['lr'] > self.state['minlr']):
-            if (time.time() - self.save_time)/60. > self.state['saveFreq']:
+            if self.step > 0 and (time.time() - self.save_time)/60. >= self.state['saveFreq']:
                 self.save()
                 if self.channel is not None:
                     self.channel.save()
@@ -265,8 +295,11 @@ class MainLoop(object):
                 self.state['step'] = self.step
                 last_cost = rvals['cost']
                 for name in rvals.keys():
-                    pos = self.step // self.state['trainFreq']
-                    self.timings[name][pos] = float(numpy.array(rvals[name]))
+                    self.timings[name][self.step] = float(numpy.array(rvals[name]))
+                if self.l2_params:
+                    for param in self.model.params:
+                        self.timings["l2_" + param.name][self.step] =\
+                            numpy.mean(param.get_value() ** 2) ** 0.5
 
                 if (numpy.isinf(rvals['cost']) or
                    numpy.isnan(rvals['cost'])) and\
@@ -309,16 +342,10 @@ class MainLoop(object):
                     self.train_data.reset()
 
                 self.step += 1
-            except:
-                self.state['wholetime'] = float(time.time() - start_time)
-                self.save()
-                if self.channel:
-                    self.channel.save()
-
-                last_cost = 0
-                print 'Error in running algo (lr issue)'
-                print 'Took', (time.time() - start_time)/60., 'min'
-                raise
+                self.timings['step'] = self.step
+                self.timings['next_offset'] = self.train_data.next_offset
+            except KeyboardInterrupt:
+                break
 
         self.state['wholetime'] = float(time.time() - start_time)
         if self.valid_data is not None:
@@ -327,3 +354,8 @@ class MainLoop(object):
         if self.channel:
             self.channel.save()
         print 'Took', (time.time() - start_time)/60., 'min'
+        avg_step = self.timings['time_step'][:self.step].mean()
+        avg_cost2expl = self.timings['log2_p_expl'][:self.step].mean()
+        print "Average step took {}".format(avg_step)
+        print "That amounts to {} sentences in a day".format(1 / avg_step * 86400 * self.state['bs'])
+        print "Average log2 per example is {}".format(avg_cost2expl)

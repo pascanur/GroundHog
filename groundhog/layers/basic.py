@@ -11,12 +11,15 @@ __contact__ = "Razvan Pascanu <r.pascanu@gmail>"
 import numpy
 import copy
 import cPickle as pkl
+import logging
 
 import theano
 import theano.tensor as TT
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from groundhog.utils import utils
 from groundhog.utils.utils import id_generator
+
+logger = logging.getLogger(__name__)
 
 class Container(object):
     """
@@ -169,8 +172,18 @@ class Container(object):
         vals = numpy.load(filename)
         for p in self.params:
             if p.name in vals:
-                print 'Loading', p.name
+                logger.debug('Loading {} of {}'.format(p.name, p.get_value(borrow=True).shape))
+                if p.get_value().shape != vals[p.name].shape:
+                    raise Exception("Shape mismatch: {} != {} for {}"
+                            .format(p.get_value().shape, vals[p.name].shape, p.name))
                 p.set_value(vals[p.name])
+            else:
+                # FIXME: do not stop loading even if there's a parameter value missing
+                #raise Exception("No parameter {} given".format(p.name))
+                logger.error( "No parameter {} given: default initialization used".format(p.name))
+        unknown = set(vals.keys()) - {p.name for p in self.params}
+        if len(unknown):
+            logger.error("Unknown parameters {} given".format(unknown))
 
 class Layer(Container):
     """
@@ -536,7 +549,7 @@ class Model(Container):
 
 class Operator(Layer):
     def __init__(self,
-                 apply_operator=None,
+#                 apply_operator=None,
                  n_in=0,
                  n_out = 0):
         super(Operator, self).__init__(n_in, n_out, rng=None)

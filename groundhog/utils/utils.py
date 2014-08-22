@@ -83,6 +83,9 @@ def softmax(x):
         e = TT.exp(x)
         return e/ TT.sum(e)
 
+def sample_zeros(sizeX, sizeY, sparsity, scale, rng):
+    return numpy.zeros((sizeX, sizeY), dtype=theano.config.floatX)
+
 def sample_weights(sizeX, sizeY, sparsity, scale, rng):
     """
     Initialization that fixes the largest singular value.
@@ -104,6 +107,10 @@ def sample_weights(sizeX, sizeY, sparsity, scale, rng):
 def sample_weights_classic(sizeX, sizeY, sparsity, scale, rng):
     sizeX = int(sizeX)
     sizeY = int(sizeY)
+    if sparsity < 0:
+        sparsity = sizeY
+    else:
+        sparsity = numpy.minimum(sizeY, sparsity)
     sparsity = numpy.minimum(sizeY, sparsity)
     values = numpy.zeros((sizeX, sizeY), dtype=theano.config.floatX)
     for dx in xrange(sizeX):
@@ -175,3 +182,10 @@ def dot(inp, matrix):
         return TT.dot(inp.reshape((shape0*shape1, shape2)), matrix)
     else:
         return TT.dot(inp, matrix)
+
+def dbg_hook(hook, x):
+    if not isinstance(x, TT.TensorVariable):
+        x.out = theano.printing.Print(global_fn=hook)(x.out)
+        return x
+    else:
+        return theano.printing.Print(global_fn=hook)(x)

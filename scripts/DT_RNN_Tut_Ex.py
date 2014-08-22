@@ -273,7 +273,7 @@ def jobman(state, channel):
     if state['carry_h0']:
         valid_updates = [(h0val, nw_h0)]
 
-    valid_fn = theano.function([x,y, reset], valid_model.out,
+    valid_fn = theano.function([x,y, reset], valid_model.cost,
           name='valid_fn', updates=valid_updates)
 
     #### Sampling

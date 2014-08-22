@@ -13,6 +13,7 @@ __contact__ = "Razvan Pascanu <r.pascanu@gmail>"
 
 import numpy
 import itertools
+import logging
 
 import cPickle as pkl
 
@@ -23,7 +24,7 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from groundhog.utils import id_generator
 from groundhog.layers.basic import Model
 
-
+logger = logging.getLogger(__name__)
 
 class LM_Model(Model):
     def  __init__(self,
@@ -120,21 +121,21 @@ class LM_Model(Model):
         # We need to merge these lists
         state_below = self.cost_layer.state_below
         if hasattr(self.cost_layer, 'mask') and self.cost_layer.mask:
-            div = TT.sum(self.cost_layer.mask)
+            num_words = TT.sum(self.cost_layer.mask)
         else:
-            div = TT.cast(state_below.shape[0], 'float32')
-        if hasattr(self.cost_layer, 'cost_scale') and self.cost_layer.cost_scale:
-            div = div * self.cost_layer.cost_scale
-
+            num_words = TT.cast(state_below.shape[0], 'float32')
+        scale = getattr(self.cost_layer, 'cost_scale', numpy.float32(1))
+        if not scale:
+            scale = numpy.float32(1)
+        scale *= numpy.float32(numpy.log(2))
 
         grad_norm = TT.sqrt(sum(TT.sum(x**2)
             for x,p in zip(self.param_grads, self.params) if p not in
-                                self.exclude_params_for_norm))
-        new_train_cost= self.train_cost/div
+                self.exclude_params_for_norm))
         new_properties = [
                 ('grad_norm', grad_norm),
-                ('traincost', new_train_cost/numpy.float32(numpy.log(2))),
-                ('trainppl', 10**(new_train_cost/numpy.float32(numpy.log(10))))]
+                ('log2_p_word', self.train_cost / num_words / scale),
+                ('log2_p_expl', self.cost_layer.cost_per_sample.mean() / scale)]
         self.properties += new_properties
 
         if len(self.noise_params) >0 and weight_noise_amount:
