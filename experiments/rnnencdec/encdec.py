@@ -52,11 +52,15 @@ def create_padded_batch(state, x, y, return_dict=False):
     * len(x[0][idx]) is the size of sequence idx
     """
 
-    # Similar length for all source sequences
-    mx = numpy.minimum(state['seqlen'], max([len(xx) for xx in x[0]]))+1
-    # Similar length for all target sequences
-    my = numpy.minimum(state['seqlen'], max([len(xx) for xx in y[0]]))+1
-    # Just batch size
+    mx = state['seqlen']
+    my = state['seqlen']
+    if state['trim_batches']:
+        # Similar length for all source sequences
+        mx = numpy.minimum(state['seqlen'], max([len(xx) for xx in x[0]]))+1
+        # Similar length for all target sequences
+        my = numpy.minimum(state['seqlen'], max([len(xx) for xx in y[0]]))+1
+
+    # Batch size
     n = x[0].shape[0]
 
     X = numpy.zeros((mx, n), dtype='int64')
