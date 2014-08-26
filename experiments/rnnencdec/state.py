@@ -143,6 +143,7 @@ def prototype_state():
 
     # Maximum sequence length
     state['seqlen'] = 30
+    state['trim_batches'] = True
     state['use_infinite_loop'] = True
 
     # Sampling hook settings
