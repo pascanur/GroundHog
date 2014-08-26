@@ -305,7 +305,8 @@ class RecurrentLayerWithSearch(Layer):
                    p_from_c=None,
                    use_noise=True,
                    no_noise_bias=False,
-                   step_num=None):
+                   step_num=None,
+                   return_alignment=False):
         """
         Constructs the computational graph of this layer.
 
@@ -408,7 +409,11 @@ class RecurrentLayerWithSearch(Layer):
             if h.ndim ==2 and mask.ndim==1:
                 mask = mask.dimshuffle(0,'x')
             h = mask * h + (1-mask) * state_before
-        return h, ctx, probs
+
+        results = [h, ctx]
+        if return_alignment:
+            results += [probs]
+        return results
 
     def fprop(self,
               state_below,
@@ -422,7 +427,8 @@ class RecurrentLayerWithSearch(Layer):
               batch_size=None,
               use_noise=True,
               truncate_gradient=-1,
-              no_noise_bias=False):
+              no_noise_bias=False,
+              return_alignment=False):
 
         updater_below = gater_below
 
@@ -456,23 +462,29 @@ class RecurrentLayerWithSearch(Layer):
             fn = lambda x, m, g, r, h, c1, cm, pc : self.step_fprop(x, h, mask=m,
                     gater_below=g, reseter_below=r,
                     c=c1, p_from_c=pc, c_mask=cm,
-                    use_noise=use_noise, no_noise_bias=no_noise_bias)
+                    use_noise=use_noise, no_noise_bias=no_noise_bias,
+                    return_alignment=return_alignment)
         else:
             sequences = [state_below, updater_below, reseter_below]
             non_sequences = []
             fn = lambda x, g, r, h, c1, pc : self.step_fprop(x, h,
                     gater_below=g, reseter_below=r,
                     c=c1, p_from_c=pc,
-                    use_noise=use_noise, no_noise_bias=no_noise_bias)
+                    use_noise=use_noise, no_noise_bias=no_noise_bias,
+                    return_alignment=return_alignment)
 
         p_from_c =  utils.dot(c, self.A_cp).reshape(
                 (c.shape[0], c.shape[1], self.n_hids))
         non_sequences = [c] + non_sequences + [p_from_c]
 
+        outputs_info = [init_state, None]
+        if return_alignment:
+            outputs_info.append(None)
+
         rval, updates = theano.scan(fn,
                         sequences=sequences,
                         non_sequences=non_sequences,
-                        outputs_info=[init_state, None, None],
+                        outputs_info=outputs_info,
                         name='layer_%s'%self.name,
                         truncate_gradient=truncate_gradient,
                         n_steps=nsteps)
@@ -790,11 +802,13 @@ class Decoder(EncoderDecoderBase):
     SAMPLING = 1
     BEAM_SEARCH = 2
 
-    def __init__(self, state, rng, prefix='dec', skip_init=False):
+    def __init__(self, state, rng, prefix='dec',
+            skip_init=False, compute_alignment=False):
         self.state = state
         self.rng = rng
         self.prefix = prefix
         self.skip_init = skip_init
+        self.compute_alignment = compute_alignment
 
         # Actually there is a problem here -
         # we don't make difference between number of input layers
@@ -1066,6 +1080,7 @@ class Decoder(EncoderDecoderBase):
             if self.state['search']:
                 add_kwargs['c'] = c
                 add_kwargs['c_mask'] = c_mask
+                add_kwargs['return_alignment'] = self.compute_alignment
                 if mode != Decoder.EVALUATION:
                     add_kwargs['step_num'] = step_num
             result = self.transitions[level](
@@ -1077,9 +1092,12 @@ class Decoder(EncoderDecoderBase):
                     use_noise=mode == Decoder.EVALUATION,
                     **add_kwargs)
             if self.state['search']:
-                h, ctx, alignment = result
-                if mode == Decoder.EVALUATION:
-                    alignment = alignment.out
+                if self.compute_alignment:
+                    h, ctx, alignment = result
+                    if mode == Decoder.EVALUATION:
+                        alignment = alignment.out
+                else:
+                    h, ctx = result
             else:
                 h = result
                 if mode == Decoder.EVALUATION:
@@ -1234,10 +1252,13 @@ class Decoder(EncoderDecoderBase):
 
 class RNNEncoderDecoder(object):
 
-    def __init__(self, state, rng, skip_init=False):
+    def __init__(self, state, rng,
+            skip_init=False,
+            compute_alignment=False):
         self.state = state
         self.rng = rng
         self.skip_init = skip_init
+        self.compute_alignment = compute_alignment
 
     def build(self):
         logger.debug("Create input variables")
@@ -1292,7 +1313,7 @@ class RNNEncoderDecoder(object):
 
         logger.debug("Create decoder")
         self.decoder = Decoder(self.state, self.rng,
-                skip_init=self.skip_init)
+                skip_init=self.skip_init, compute_alignment=self.compute_alignment)
         self.decoder.create_layers()
         logger.debug("Build log-likelihood computation graph")
         self.predictions, self.alignment = self.decoder.build_decoder(
