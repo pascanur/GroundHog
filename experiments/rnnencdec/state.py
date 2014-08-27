@@ -217,6 +217,30 @@ def prototype_sentence_state():
 
     return state
 
+def prototype_search_state():
+    state = prototype_sentence_state()
+
+    state['dec_rec_layer'] = 'RecurrentLayerWithSearch'
+    state['search'] = True
+    state['last_forward'] = False
+    state['forward'] = True
+    state['backward'] = True
+    state['seqlen'] = 50
+    state['sort_k_batches'] = 20
+    return state
+
+
+def prototype_de2en_state():
+    state = prototype_search_state()
+
+    state['source'] = ["/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/parallel.en.h5"]
+    state['target'] = ["/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/parallel.de.h5"]
+    state['indx_word'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/ivocab.en.pkl"
+    state['indx_word_target'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/ivocab.de.pkl"
+    state['word_indx'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/vocab.en.pkl"
+    state['word_indx_trgt'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/vocab.de.pkl"
+    return state
+
 def prototype_helios_sentence_state():
     state = prototype_sentence_state()
 
