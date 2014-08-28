@@ -188,7 +188,6 @@ def prototype_state():
 
     # When set to 0 each new model dump will be saved in a new file
     state['overwrite'] = 1
-
     return state
 
 def prototype_sentence_state():
@@ -214,7 +213,6 @@ def prototype_sentence_state():
     state['bs']  = 80
 
     state['prefix'] = 'sentence_'
-
     return state
 
 def prototype_search_state():
@@ -229,30 +227,6 @@ def prototype_search_state():
     state['sort_k_batches'] = 20
     return state
 
-
-def prototype_de2en_state():
-    state = prototype_search_state()
-
-    state['source'] = ["/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/parallel.en.h5"]
-    state['target'] = ["/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/parallel.de.h5"]
-    state['indx_word'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/ivocab.en.pkl"
-    state['indx_word_target'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/ivocab.de.pkl"
-    state['word_indx'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/vocab.en.pkl"
-    state['word_indx_trgt'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/vocab.de.pkl"
-    return state
-
-def prototype_helios_sentence_state():
-    state = prototype_sentence_state()
-
-    state['target'] = ["/scratch/jvb-000-aa/bahdanau/binarized_text.shuffled.fr.h5"]
-    state['source'] = ["/scratch/jvb-000-aa/bahdanau/binarized_text.shuffled.en.h5"]
-    state['indx_word'] = "/scratch/jvb-000-aa/bahdanau/ivocab_source.pkl"
-    state['indx_word_target'] = "/scratch/jvb-000-aa/bahdanau/ivocab_target.pkl"
-    state['word_indx'] = "/scratch/jvb-000-aa/bahdanau/vocab.en.pkl"
-    state['word_indx_trgt'] = "/scratch/jvb-000-aa/bahdanau/vocab.fr.pkl"
-
-    return state
-
 def prototype_phrase_lstm_state():
     state = prototype_state()
     state['enc_rec_layer'] = 'LSTMLayer'
@@ -264,44 +238,4 @@ def prototype_phrase_lstm_state():
     state['dim_mult'] = 4
 
     state['prefix'] = 'phrase_lstm_'
-    return state
-
-def prototype_autoenc_state():
-    state = prototype_sentence_state()
-    state['target'] = ["/data/lisatmp3/bahdanau/mt/binarized_text.shuffled.en.h5"]
-    state['indx_word_target'] = state['indx_word']
-    state['word_indx_trgt'] = state['word_indx']
-    return state
-
-def prototype_phrase_en_zn_state():
-    state = prototype_state()
-
-    #state['target'] = ["/u/chokyun/tmp3/hal/phrase-table.in.shuf.en.h5"]
-    #state['source'] = ["/u/chokyun/tmp3/hal/phrase-table.in.shuf.zh.h5"]
-    #state['indx_word_target'] = "/u/chokyun/tmp3/hal/train.in.en.indict.pkl"
-    #state['indx_word'] = "/u/chokyun/tmp3/hal/train.in.zh.indict.pkl"
-    #state['word_indx_trgt'] = "/u/chokyun/tmp3/hal/train.in.en.dict.pkl"
-    #state['word_indx'] = "/u/chokyun/tmp3/hal/train.in.zh.dict.pkl"
-
-    state['target'] = ["/u/chokyun/tmp3/hal/phrase-table.out.shuf.en.h5"]
-    state['source'] = ["/u/chokyun/tmp3/hal/phrase-table.out.shuf.zh.h5"]
-    state['indx_word_target'] = "/u/chokyun/tmp3/hal/train.out.en.indict.pkl"
-    state['indx_word'] = "/u/chokyun/tmp3/hal/train.out.zh.indict.pkl"
-    state['word_indx_trgt'] = "/u/chokyun/tmp3/hal/train.out.en.dict.pkl"
-    state['word_indx'] = "/u/chokyun/tmp3/hal/train.out.zh.dict.pkl"
-
-    state['null_sym_source'] = 15000
-    state['null_sym_target'] = 15000
-
-    state['n_sym_source'] = state['null_sym_source'] + 1
-    state['n_sym_target'] = state['null_sym_target'] + 1
-
-    state['seqlen'] = 50
-
-    state['dim'] = 1000
-    state['rank_n_approx'] = 620
-    state['bs']  = 80
-
-    state['prefix'] = 'phrase_en_zh_'
-
     return state
