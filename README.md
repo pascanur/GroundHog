@@ -6,7 +6,7 @@ GroundHog is a python framework on top of Theano
 efficient way of implementing complex recurrent neural network models. It
 supports a variety of recurrent layers, such as DT-RNN, DOT-RNN, RNN with gated
 hidden units and LSTM. Furthermore, it enables the flexible combination of
-various layers together, for instance, to build a neural translation model.
+various layers, for instance, to build a neural translation model.
 
 This is a version forked from the original GroundHog
 (https://github.com/pascanur/GroundHog) developed by Razvan Pascanu, Caglar
