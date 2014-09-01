@@ -213,7 +213,7 @@ class LM_Model(Model):
         return [('cost',entropy), ('ppl',ppl)]
 
 
-    def load_dict(self):
+    def load_dict(self, opts):
         """
         Loading the dictionary that goes from indices to actual words
         """
@@ -221,16 +221,16 @@ class LM_Model(Model):
         if self.indx_word and '.pkl' in self.indx_word[-4:]:
             data_dict = pkl.load(open(self.indx_word, "r"))
             self.word_indxs = data_dict
-            self.word_indxs[len(self.word_indxs.items())] = '<eol>'
-            self.word_indxs[len(self.word_indxs.items())] = '<oov>'
+            self.word_indxs[opts['null_sym_target']] = '<eol>'
+            self.word_indxs[opts['unk_sym_target']] = opts['oov']
         elif self.indx_word and '.np' in self.indx_word[-4:]:
             self.word_indxs = numpy.load(self.indx_word)['unique_words']
 
         if self.indx_word_src and '.pkl' in self.indx_word_src[-4:]:
             data_dict = pkl.load(open(self.indx_word_src, "r"))
             self.word_indxs_src = data_dict
-            self.word_indxs_src[len(self.word_indxs_src.items())] = '<eol>'
-            self.word_indxs_src[len(self.word_indxs_src.items())] = '<oov>'
+            self.word_indxs_src[opts['null_sym_source']] = '<eol>'
+            self.word_indxs_src[opts['unk_sym_source']] = opts['oov']
         elif self.indx_word_src and '.np' in self.indx_word_src[-4:]:
             self.word_indxs_src = numpy.load(self.indx_word_src)['unique_words']
 

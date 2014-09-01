@@ -18,6 +18,10 @@ def prototype_state():
     # TODO: delete this one
     state['randstart'] = False
 
+    # These are unknown words placeholders
+    state['unk_sym_source'] = 1
+    state['unk_sym_target'] = 1
+
     # These are end-of-sequence marks
     state['null_sym_source'] = 15000
     state['null_sym_target'] = 15000
@@ -25,7 +29,6 @@ def prototype_state():
     # These are vocabulary sizes for the source and target languages
     state['n_sym_source'] = state['null_sym_source'] + 1
     state['n_sym_target'] = state['null_sym_target'] + 1
-    state['unk_sym_target'] = 1
 
     # The components of the decoder annotation
     state['last_forward'] = True
@@ -193,12 +196,12 @@ def prototype_state():
 def prototype_sentence_state():
     state = prototype_state()
 
-    state['target'] = ["/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.fr.h5"]
-    state['source'] = ["/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.en.h5"]
-    state['indx_word'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/ivocab_source.pkl"
-    state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/ivocab_target.pkl"
-    state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/vocab.en.pkl"
-    state['word_indx_trgt'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/vocab.fr.pkl"
+    state['target'] = ["/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/binarized_text.shuffled.fr.h5"]
+    state['source'] = ["/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/binarized_text.shuffled.en.h5"]
+    state['indx_word'] = "/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/ivocab.en.pkl"
+    state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/ivocab.fr.pkl"
+    state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/vocab.en.pkl"
+    state['word_indx_trgt'] = "/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/vocab.fr.pkl"
 
     state['null_sym_source'] = 30000
     state['null_sym_target'] = 30000
