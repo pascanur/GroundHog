@@ -175,7 +175,7 @@ def sample(lm_model, seq, n_samples,
             for pidx in sprobs:
                 print "{}: {} {} {}".format(pidx, -costs[pidx], all_probs[pidx], sentences[pidx])
             print
-        return sentences, costs
+        return sentences, costs, None
     else:
         raise Exception("I don't know what to do")
 
