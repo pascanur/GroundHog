@@ -34,7 +34,9 @@ Neural Machine Translation
 The folder experiments/rnnencdec contains the implementations of "RNN Encoder-Decoder"
 and "RNN Search" translation models used for the paper
 "Neural Machine Translation by Jointly Learning to Align and Translate" 
-(http://arxiv.org/abs/1409.0473). The code is structured as follows:
+(http://arxiv.org/abs/1409.0473).
+
+###Code Structure
 
 - encdec.py contains the actual models code
 - train.py is a script to train a new model or continue training an existing one
@@ -48,10 +50,20 @@ and "RNN Search" translation models used for the paper
   are base configurations from which one can start to train a model of his/her choice.
   The --proto option of the train.py script can be used to start with a particular prototype.
   
+####Using training script
+TODO
 
+####Using sampling script
+TODO
 
+####Using scoring script
+TODO
 
+###Known Issues
 
-
+- float32 is hardcoded in many places, which effectively means that you can only 
+  use the code with floatX=float32 in your .theanorc or THEANO_FLAGS
+- In order to sample from the RNNsearch model you have to set theano options on_unused_input to 'warn' 
+  value via either .theanorc or THEANO_FLAGS
 
 
