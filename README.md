@@ -108,7 +108,7 @@ where your_state.pkl and your_model.npz are a state and a model respectively pro
 - In order to sample from the RNNsearch model you have to set the theano option on_unused_input to 'warn' 
   value via either .theanorc or THEANO_FLAGS
 
-####Rereferences
+####References
 "Neural Machine Translation by Jointly Learning to Align and Translate" 
 by Dzmitry Bahdanau, Kyung-Hyun Cho and Yoshua Bengio
 (http://arxiv.org/abs/1409.0473).
