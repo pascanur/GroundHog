@@ -9,8 +9,8 @@ import sys
 
 import numpy
 
-import experiments.rnnencdec
-from experiments.rnnencdec import\
+import experiments.nmt
+from experiments.nmt import\
     RNNEncoderDecoder,\
     prototype_phrase_state,\
     parse_input

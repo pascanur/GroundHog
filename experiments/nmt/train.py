@@ -11,9 +11,9 @@ from groundhog.trainer.SGD_adadelta import SGD as SGD_adadelta
 from groundhog.trainer.SGD import SGD as SGD
 from groundhog.trainer.SGD_momentum import SGD as SGD_momentum
 from groundhog.mainLoop import MainLoop
-from experiments.rnnencdec import\
-        RNNEncoderDecoder, prototype_state, get_batch_iterator
-import experiments.rnnencdec
+from experiments.nmt import\
+        RNNEncoderDecoder, prototype_search_state, get_batch_iterator
+import experiments.nmt
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    state = getattr(experiments.rnnencdec, args.proto)()
+    state = getattr(experiments.nmt, args.proto)()
     if args.state:
         if args.state.endswith(".py"):
             state.update(eval(open(args.state).read()))

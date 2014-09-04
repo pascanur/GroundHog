@@ -11,8 +11,8 @@ import networkx as nx
 
 import numpy
 
-import experiments.rnnencdec
-from experiments.rnnencdec import RNNEncoderDecoder, parse_input
+import experiments.nmt
+from experiments.nmt import RNNEncoderDecoder, parse_input
 
 import theano
 import theano.tensor as TT
@@ -54,7 +54,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    state = getattr(experiments.rnnencdec, args.state_fn)()
+    state = getattr(experiments.nmt, args.state_fn)()
     if hasattr(args, 'state') and args.state:
         with open(args.state) as src:
             state.update(cPickle.load(src))

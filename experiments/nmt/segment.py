@@ -11,9 +11,9 @@ import logging
 import numpy
 import time
 from itertools import izip, product
-from experiments.rnnencdec import RNNEncoderDecoder, prototype_state, parse_input, create_padded_batch
-from experiments.rnnencdec.sample import BeamSearch
-from experiments.rnnencdec.sample import sample as sample_func
+from experiments.nmt import RNNEncoderDecoder, prototype_state, parse_input, create_padded_batch
+from experiments.nmt.sample import BeamSearch
+from experiments.nmt.sample import sample as sample_func
 from collections import defaultdict
 import operator
 

@@ -9,7 +9,7 @@ import sys
 
 import numpy
 
-from experiments.rnnencdec import\
+from experiments.nmt import\
         RNNEncoderDecoder,\
         parse_input,\
         get_batch_iterator,\

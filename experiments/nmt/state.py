@@ -7,159 +7,186 @@ def prototype_phrase_state():
 
     # Random seed
     state['seed'] = 1234
-
     # Logging level
     state['level'] = 'DEBUG'
 
-    # Data
-    state['source'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.en.h5"]
-    state['target'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.fr.h5"]
-    state['indx_word'] = "/data/lisatmp3/chokyun/mt/ivocab_source.pkl"
-    state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/ivocab_target.pkl"
-    state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.en.pkl"
-    state['word_indx_trgt'] = "/data/lisatmp3/bahdanau/vocab.fr.pkl"
-    state['oov'] = 'UNK'
+    # ----- DATA -----
 
-    # These are unknown words placeholders
+    # Source sequences
+    state['source'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.en.h5"]
+    # Target sequences
+    state['target'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.fr.h5"]
+    # index -> word dict for the source language
+    state['indx_word'] = "/data/lisatmp3/chokyun/mt/ivocab_source.pkl"
+    # index -> word dict for the target language
+    state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/ivocab_target.pkl"
+    # word -> index dict for the source language
+    state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.en.pkl"
+    # word -> index dict for the target language
+    state['word_indx_trgt'] = "/data/lisatmp3/bahdanau/vocab.fr.pkl"
+
+    # ----- VOCABULARIES -----
+
+    # A string representation for the unknown word placeholder for both language
+    state['oov'] = 'UNK'
+    # These are unknown word placeholders
     state['unk_sym_source'] = 1
     state['unk_sym_target'] = 1
-
     # These are end-of-sequence marks
     state['null_sym_source'] = 15000
     state['null_sym_target'] = 15000
-
     # These are vocabulary sizes for the source and target languages
     state['n_sym_source'] = state['null_sym_source'] + 1
     state['n_sym_target'] = state['null_sym_target'] + 1
 
-    # The components of the decoder annotation
+    # ----- MODEL STRUCTURE -----
+
+    # The components of the annotations produced by the Encoder
     state['last_forward'] = True
     state['last_backward'] = False
     state['forward'] = False
     state['backward'] = False
-
-    # Search in source sentence
+    # Turns on "search" mechanism
     state['search'] = False
-
-    # This is for predicting the next target from the current one
+    # Turns on using the shortcut from the previous word to the current one
     state['bigram'] = True
-
-    # This for the hidden state initilization
+    # Turns on initialization of the first hidden state from the annotations
     state['bias_code'] = True
-
-    # This for influence on decoding from representation
+    # Turns on using the context to compute the next Decoder state
     state['decoding_inputs'] = True
-
-    # This is for the input -> output shortcut
-    state['avg_word'] = False
+    # Turns on an intermediate maxout layer in the output
+    state['deep_out'] = True
+    # Heights of hidden layers' stacks in encoder and decoder
+    # WARNING: has not been used for quite while and most probably
+    # doesn't work...
+    state['encoder_stack'] = 1
+    state['decoder_stack'] = 1
+    # Use the top-most recurrent layer states as annotations
+    # WARNING: makes sense only for hierachical RNN which
+    # are in fact currently not supported
+    state['take_top'] = True
+    # Activates age old bug fix - should always be true
+    state['check_first_word'] = True
 
     state['eps'] = 1e-10
 
-    # Dimensionality of hidden layers
-    state['dim'] = 1000
+    # ----- MODEL COMPONENTS -----
 
-    # Size of hidden layers' stack in encoder and decoder
-    state['encoder_stack'] = 1
-    state['decoder_stack'] = 1
-
-    state['deep_out'] = True
-    state['mult_out'] = False
-
-    state['rank_n_approx'] = 100
+    # Low-rank approximation activation function
     state['rank_n_activ'] = 'lambda x: x'
-    state['learn_emb'] = True
+    # Hidden-to-hidden activation function
+    state['activ'] = 'lambda x: TT.tanh(x)'
+    # Nonlinearity for the output
+    state['unary_activ'] = 'Maxout(2)'
 
-    # Hidden layer configuration
+    # Hidden layer configuration for the forward encoder
     state['enc_rec_layer'] = 'RecurrentLayer'
     state['enc_rec_gating'] = True
     state['enc_rec_reseting'] = True
     state['enc_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
     state['enc_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
-
+    # Hidden layer configuration for the decoder
     state['dec_rec_layer'] = 'RecurrentLayer'
     state['dec_rec_gating'] = True
     state['dec_rec_reseting'] = True
     state['dec_rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
     state['dec_rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
-
+    # Default hidden layer configuration, which is effectively used for
+    # the backward RNN
+    # TODO: separate back_enc_ configuration and convert the old states
+    # to have it
     state['rec_layer'] = 'RecurrentLayer'
     state['rec_gating'] = True
     state['rec_reseting'] = True
     state['rec_gater'] = 'lambda x: TT.nnet.sigmoid(x)'
     state['rec_reseter'] = 'lambda x: TT.nnet.sigmoid(x)'
 
-    # Representation from hidden layer
-    state['take_top'] = True
+    # ----- SIZES ----
 
-    # Hidden-to-hidden activation function
-    state['activ'] = 'lambda x: TT.tanh(x)'
+    # Dimensionality of hidden layers
+    state['dim'] = 1000
+    # Dimensionality of low-rank approximation
+    state['rank_n_approx'] = 100
+    # k for the maxout stage of output generation
+    state['maxout_part'] = 2.
+
+    # ----- WEIGHTS, INITIALIZATION -----
 
     # This one is bias applied in the recurrent layer. It is likely
     # to be zero as MultiLayer already has bias.
     state['bias'] = 0.
 
-    # This one is bias at the projection stage
-    # TODO fully get what is it needed for
-    state['bias_mlp'] = 0.
-
-    # Specifiying the output layer
-    state['maxout_part'] = 2.
-    state['unary_activ'] = 'Maxout(2)'
-
-    # Weight initialization parameters
+    # Weights initializer for the recurrent net matrices
     state['rec_weight_init_fn'] = 'sample_weights_orth'
-    state['weight_init_fn'] = 'sample_weights_classic'
     state['rec_weight_scale'] = 1.
+    # Weights initializer for other matrices
+    state['weight_init_fn'] = 'sample_weights_classic'
     state['weight_scale'] = 0.01
 
+    # ---- REGULARIZATION -----
+
+    # WARNING: dropout is not tested and probably does not work.
     # Dropout in output layer
     state['dropout'] = 1.
     # Dropout in recurrent layers
     state['dropout_rec'] = 1.
 
+    # WARNING: weight noise regularization is not tested
+    # and most probably does not work.
     # Random weight noise regularization settings
     state['weight_noise'] = False
     state['weight_noise_rec'] = False
     state['weight_noise_amount'] = 0.01
 
-    # Threshold to cut the gradient
+    # Threshold to clip the gradient
     state['cutoff'] = 1.
-    # TODO: what does it do?
+    # A magic gradient clipping option that you should never change...
     state['cutoff_rescale_length'] = 0.
 
-    # Choose the training criterion
+    # ----- TRAINING METHOD -----
+
+    # Turns on noise contrastive estimation instead maximum likelihood
     state['use_nce'] = False
 
-    # Choose optimization algo
+    # Choose optimization algorithm
     state['algo'] = 'SGD_adadelta'
 
-    # Adagrad setting
+    # Adadelta hyperparameters
     state['adarho'] = 0.95
     state['adaeps'] = 1e-6
 
-    # Learning rate stuff for SGD
+    # Early stopping configuration
+    # WARNING: was never changed during machine translation experiments,
+    # as early stopping was not used.
     state['patience'] = 1
     state['lr'] = 1.
     state['minlr'] = 0
 
     # Batch size
     state['bs']  = 64
+    # We take this many minibatches, merge them,
+    # sort the sentences according to their length and create
+    # this many new batches with less padding.
     state['sort_k_batches'] = 10
 
     # Maximum sequence length
     state['seqlen'] = 30
+    # Turns on trimming the trailing paddings from batches
+    # consisting of short sentences.
     state['trim_batches'] = True
+    # Loop through the data
     state['use_infinite_loop'] = True
+    # Start from a random entry
+    state['shuffle'] = False
 
-    # Sampling hook settings
-    state['n_samples'] = 3
-    state['n_examples'] = 3
+    # ----- TRAINING PROCESS -----
 
-    # Activates bug fix
-    state['check_first_word'] = True
-
+    # Prefix for the model, state and timing files
+    state['prefix'] = 'phrase_'
     # Specifies whether old model should be reloaded first
     state['reload'] = True
+    # When set to 0 each new model dump will be saved in a new file
+    state['overwrite'] = 1
 
     # Number of batches to process
     state['loopIters'] = 3000000
@@ -168,11 +195,8 @@ def prototype_phrase_state():
     # Error level to stop at
     state['minerr'] = -1
 
-    # Data iterator options
+    # Reset data iteration every this many epochs
     state['reset'] = -1
-    state['shuffle'] = False
-    state['cache_size'] = 0
-
     # Frequency of training error reports (in number of batches)
     state['trainFreq'] = 1
     # Frequency of running hooks
@@ -182,17 +206,12 @@ def prototype_phrase_state():
     # Model saving frequency (in minutes)
     state['saveFreq'] = 10
 
-    # Turns on profiling of training phase
-    state['profile'] = 0
+    # Sampling hook settings
+    state['n_samples'] = 3
+    state['n_examples'] = 3
 
     # Raise exception if nan
     state['on_nan'] = 'raise'
-
-    # Default paths
-    state['prefix'] = 'phrase_'
-
-    # When set to 0 each new model dump will be saved in a new file
-    state['overwrite'] = 1
     return state
 
 def prototype_encdec_state():

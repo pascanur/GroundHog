@@ -179,7 +179,6 @@ def get_batch_iterator(state, rng):
         source_file=state['source'][0],
         can_fit=False,
         queue_size=1000,
-        cache_size=state['cache_size'],
         shuffle=state['shuffle'],
         use_infinite_loop=state['use_infinite_loop'],
         max_len=state['seqlen'])
@@ -901,7 +900,6 @@ class Decoder(EncoderDecoderBase):
         readout_kwargs.update(dict(
                 n_hids=self.state['dim'],
                 activation='lambda x: x',
-                bias_scale=[self.state['bias_mlp']/3],
             ))
 
         self.repr_readout = MultiLayer(
@@ -928,7 +926,6 @@ class Decoder(EncoderDecoderBase):
                 n_in=self.state['rank_n_approx'],
                 n_hids=self.state['dim'],
                 activation=['lambda x:x'],
-                bias_scale=[self.state['bias_mlp']/3],
                 learn_bias=False,
                 name='{}_prev_readout_{}'.format(self.prefix, level),
                 **self.default_kwargs)
