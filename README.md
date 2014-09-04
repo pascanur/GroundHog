@@ -25,8 +25,8 @@ purposes.
 Neural Machine Translation
 --------------------------
 
-The folder experiments/rnnencdec contains the implementations of "RNN Encoder-Decoder"
-and "RNN Search" translation models used for the paper [1]
+The folder experiments/nmt contains the implementations of RNNencdec
+and RNNsearch translation models used for the paper [1]
 
 ####Code Structure
 
@@ -62,12 +62,12 @@ If restarted, the training will resume from the last saved model.
 The default prototype state used is *prototype_search_state* that corresponds 
 to the RNNsearch-50 model from [1].
 The *--proto* options allows to choose a different prototype state,
-for instance to train an RNNenc-30 from [1] run
+for instance to train an RNNencdec-30 from [1] run
 ```
 train.py --proto=prototype_encdec_state
 ```
 To change options from the state use the positional argument *changes*. For instance, to train
-RNNenc-50 from [1] you can run
+RNNencdec-50 from [1] you can run
 ```
 train.py --proto=prototype_encdec_state "prefix='encdec-50_',seqlen=50,sort_k_batches=20"
 ```
@@ -88,12 +88,12 @@ train.py --proto=a_prototype_state_of_choice --state german-data.py
 ```
 
 ####Using sampling script
-The typicall call is
+The typical call is
 ```
-sample.py --state your_state.pkl your_model.npz 
+sample.py --beam-search --state your_state.pkl your_model.npz 
 ```
 where your_state.pkl and your_model.npz are a state and a model respectively produced by the train.py script.
-
+A batch mode is also supported, see the sample.py source code.
 
 ####Known Issues
 
