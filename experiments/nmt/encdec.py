@@ -119,6 +119,10 @@ def create_padded_batch(state, x, y, return_dict=False):
     if len(valid_inputs.nonzero()[0]) <= 0:
         return None
 
+    # Unknown words
+    X[X >= state['n_sym_source']] = state['unk_sym_source']
+    Y[Y >= state['n_sym_target']] = state['unk_sym_target']
+
     if return_dict:
         return {'x' : X, 'x_mask' : Xmask, 'y': Y, 'y_mask' : Ymask}
     else:
@@ -1368,7 +1372,7 @@ class RNNEncoderDecoder(object):
             indx_word=self.state['indx_word_target'],
             indx_word_src=self.state['indx_word'],
             rng=self.rng)
-        self.lm_model.load_dict()
+        self.lm_model.load_dict(self.state)
         logger.debug("Model params:\n{}".format(
             pprint.pformat(sorted([p.name for p in self.lm_model.params]))))
         return self.lm_model
@@ -1462,16 +1466,18 @@ def parse_input(state, word2idx, line, raise_unk=False, idx2word=None):
     seqin = line.split()
     seqlen = len(seqin)
     seq = numpy.zeros(seqlen+1, dtype='int64')
+    unk_sym = state['unk_sym_source']
     for idx,sx in enumerate(seqin):
-        try:
-            seq[idx] = word2idx[sx]
-        except:
-            if raise_unk:
-                raise
-            seq[idx] = word2idx[state['oov']]
+        seq[idx] = word2idx.get(sx, unk_sym)
+        if seq[idx] >= state['n_sym_source']:
+            seq[idx] = unk_sym
+        if seq[idx] == unk_sym and raise_unk:
+            raise Exception("Unknown word {}".format(sx))
+
     seq[-1] = state['null_sym_source']
     if idx2word:
         idx2word[state['null_sym_source']] = '<eos>'
+        idx2word[unk_sym] = state['oov']
         parsed_in = [idx2word[sx] for sx in seq]
         return seq, " ".join(parsed_in)
 

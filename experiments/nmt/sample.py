@@ -10,7 +10,10 @@ import sys
 import numpy
 
 import experiments.rnnencdec
-from experiments.rnnencdec import RNNEncoderDecoder, parse_input
+from experiments.rnnencdec import\
+    RNNEncoderDecoder,\
+    prototype_phrase_state,\
+    parse_input
 
 logger = logging.getLogger(__name__)
 
@@ -175,35 +178,46 @@ def sample(lm_model, seq, n_samples,
             for pidx in sprobs:
                 print "{}: {} {} {}".format(pidx, -costs[pidx], all_probs[pidx], sentences[pidx])
             print
-        return sentences, costs
+        return sentences, costs, None
     else:
         raise Exception("I don't know what to do")
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--state", help="State to use")
-    parser.add_argument("--state-fn", help="Initialization function for state", default="prototype_state")
-    parser.add_argument("--beam-search", help="Beam size, turns on beam-search", type=int)
-    parser.add_argument("--ignore-unk", default=False, action="store_true",
+    parser = argparse.ArgumentParser(
+            "Sample (of find with beam-serch) translations from a translation model")
+    parser.add_argument("--state",
+            required=True, help="State to use")
+    parser.add_argument("--beam-search",
+            action="store_true", help="Beam size, turns on beam-search")
+    parser.add_argument("--beam-size",
+            type=int, help="Beam size")
+    parser.add_argument("--ignore-unk",
+            default=False, action="store_true",
             help="Ignore unknown words")
-    parser.add_argument("--source", help="File of source sentences", default="")
-    parser.add_argument("--trans", help="File to save translations in", default="")
-    parser.add_argument("--normalize", help="Normalize log-prob with the word count",
-        action="store_true", default=False)
-    parser.add_argument("--verbose", action="store_true",
-        default=False, help="Be verbose")
-    parser.add_argument("model_path", help="Path to the model")
-    parser.add_argument("changes",  nargs="?", help="Changes to state", default="")
+    parser.add_argument("--source",
+            help="File of source sentences")
+    parser.add_argument("--trans",
+            help="File to save translations in")
+    parser.add_argument("--normalize",
+            action="store_true", default=False,
+            help="Normalize log-prob with the word count")
+    parser.add_argument("--verbose",
+            action="store_true", default=False,
+            help="Be verbose")
+    parser.add_argument("model_path",
+            help="Path to the model")
+    parser.add_argument("changes",
+            nargs="?", default="",
+            help="Changes to state")
     return parser.parse_args()
 
 def main():
     args = parse_args()
 
-    state = getattr(experiments.rnnencdec, args.state_fn)()
-    if hasattr(args, 'state') and args.state:
-        with open(args.state) as src:
-            state.update(cPickle.load(src))
+    state = prototype_phrase_state()
+    with open(args.state) as src:
+        state.update(cPickle.load(src))
     state.update(eval("dict({})".format(args.changes)))
 
     logging.basicConfig(level=getattr(logging, state['level']), format="%(asctime)s: %(name)s: %(levelname)s: %(message)s")
@@ -225,21 +239,22 @@ def main():
 
     idict_src = cPickle.load(open(state['indx_word'],'r'))
 
-    if args.source != "" and args.trans != "":
+    if args.source and args.trans:
         # Actually only beam search is currently supported here
         assert beam_search
+        assert args.beam_size
 
         fsrc = open(args.source, 'r')
         ftrans = open(args.trans, 'w')
 
         start_time = time.time()
 
-        n_samples = args.beam_search
+        n_samples = args.beam_size
         total_cost = 0.0
         logging.debug("Beam size: {}".format(n_samples))
         for i, line in enumerate(fsrc):
             seqin = line.strip()
-            seq,parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
+            seq, parsed_in = parse_input(state, indx_word, seqin, idx2word=idict_src)
             if args.verbose:
                 print "Parsed Input:", parsed_in
             trans, costs, _ = sample(lm_model, seq, n_samples, sampler=sampler,

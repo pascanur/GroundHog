@@ -1,4 +1,8 @@
-def prototype_state():
+def prototype_phrase_state():
+    """This prototype is the configuration used in the paper
+    'Learning Phrase Representations using RNN Encoder-Decoder
+    for  Statistical Machine Translation' """
+
     state = {}
 
     # Random seed
@@ -15,8 +19,10 @@ def prototype_state():
     state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.en.pkl"
     state['word_indx_trgt'] = "/data/lisatmp3/bahdanau/vocab.fr.pkl"
     state['oov'] = 'UNK'
-    # TODO: delete this one
-    state['randstart'] = False
+
+    # These are unknown words placeholders
+    state['unk_sym_source'] = 1
+    state['unk_sym_target'] = 1
 
     # These are end-of-sequence marks
     state['null_sym_source'] = 15000
@@ -25,7 +31,6 @@ def prototype_state():
     # These are vocabulary sizes for the source and target languages
     state['n_sym_source'] = state['null_sym_source'] + 1
     state['n_sym_target'] = state['null_sym_target'] + 1
-    state['unk_sym_target'] = 1
 
     # The components of the decoder annotation
     state['last_forward'] = True
@@ -188,18 +193,20 @@ def prototype_state():
 
     # When set to 0 each new model dump will be saved in a new file
     state['overwrite'] = 1
-
     return state
 
-def prototype_sentence_state():
-    state = prototype_state()
+def prototype_encdec_state():
+    """This prototype is the configuration used to train the RNNenc-30 model from the paper
+    'Neural Machine Translation by Jointly Learning to Align and Translate' """
 
-    state['target'] = ["/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.fr.h5"]
-    state['source'] = ["/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/binarized_text.shuffled.en.h5"]
-    state['indx_word'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/ivocab_source.pkl"
-    state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/ivocab_target.pkl"
-    state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/vocab.en.pkl"
-    state['word_indx_trgt'] = "/data/lisatmp3/chokyun/mt/vocab.30k/bitexts.selected/vocab.fr.pkl"
+    state = prototype_phrase_state()
+
+    state['target'] = ["/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/binarized_text.shuffled.fr.h5"]
+    state['source'] = ["/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/binarized_text.shuffled.en.h5"]
+    state['indx_word'] = "/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/ivocab.en.pkl"
+    state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/ivocab.fr.pkl"
+    state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/vocab.en.pkl"
+    state['word_indx_trgt'] = "/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/vocab.fr.pkl"
 
     state['null_sym_source'] = 30000
     state['null_sym_target'] = 30000
@@ -213,12 +220,14 @@ def prototype_sentence_state():
     state['rank_n_approx'] = 620
     state['bs']  = 80
 
-    state['prefix'] = 'sentence_'
-
+    state['prefix'] = 'encdec_'
     return state
 
 def prototype_search_state():
-    state = prototype_sentence_state()
+    """This prototype is the configuration used to train the RNNsearch-50 model from the paper
+    'Neural Machine Translation by Jointly Learning to Align and Translate' """
+
+    state = prototype_encdec_state()
 
     state['dec_rec_layer'] = 'RecurrentLayerWithSearch'
     state['search'] = True
@@ -227,34 +236,11 @@ def prototype_search_state():
     state['backward'] = True
     state['seqlen'] = 50
     state['sort_k_batches'] = 20
-    return state
-
-
-def prototype_de2en_state():
-    state = prototype_search_state()
-
-    state['source'] = ["/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/parallel.en.h5"]
-    state['target'] = ["/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/parallel.de.h5"]
-    state['indx_word'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/ivocab.en.pkl"
-    state['indx_word_target'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/ivocab.de.pkl"
-    state['word_indx'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/vocab.en.pkl"
-    state['word_indx_trgt'] = "/data/lisatmp3/chokyun/wmt14/parallel-corpus/en-de/vocab.de.pkl"
-    return state
-
-def prototype_helios_sentence_state():
-    state = prototype_sentence_state()
-
-    state['target'] = ["/scratch/jvb-000-aa/bahdanau/binarized_text.shuffled.fr.h5"]
-    state['source'] = ["/scratch/jvb-000-aa/bahdanau/binarized_text.shuffled.en.h5"]
-    state['indx_word'] = "/scratch/jvb-000-aa/bahdanau/ivocab_source.pkl"
-    state['indx_word_target'] = "/scratch/jvb-000-aa/bahdanau/ivocab_target.pkl"
-    state['word_indx'] = "/scratch/jvb-000-aa/bahdanau/vocab.en.pkl"
-    state['word_indx_trgt'] = "/scratch/jvb-000-aa/bahdanau/vocab.fr.pkl"
-
+    state['prefix'] = 'search_'
     return state
 
 def prototype_phrase_lstm_state():
-    state = prototype_state()
+    state = prototype_phrase_state()
     state['enc_rec_layer'] = 'LSTMLayer'
     state['enc_rec_gating'] = False
     state['enc_rec_reseting'] = False
@@ -264,44 +250,4 @@ def prototype_phrase_lstm_state():
     state['dim_mult'] = 4
 
     state['prefix'] = 'phrase_lstm_'
-    return state
-
-def prototype_autoenc_state():
-    state = prototype_sentence_state()
-    state['target'] = ["/data/lisatmp3/bahdanau/mt/binarized_text.shuffled.en.h5"]
-    state['indx_word_target'] = state['indx_word']
-    state['word_indx_trgt'] = state['word_indx']
-    return state
-
-def prototype_phrase_en_zn_state():
-    state = prototype_state()
-
-    #state['target'] = ["/u/chokyun/tmp3/hal/phrase-table.in.shuf.en.h5"]
-    #state['source'] = ["/u/chokyun/tmp3/hal/phrase-table.in.shuf.zh.h5"]
-    #state['indx_word_target'] = "/u/chokyun/tmp3/hal/train.in.en.indict.pkl"
-    #state['indx_word'] = "/u/chokyun/tmp3/hal/train.in.zh.indict.pkl"
-    #state['word_indx_trgt'] = "/u/chokyun/tmp3/hal/train.in.en.dict.pkl"
-    #state['word_indx'] = "/u/chokyun/tmp3/hal/train.in.zh.dict.pkl"
-
-    state['target'] = ["/u/chokyun/tmp3/hal/phrase-table.out.shuf.en.h5"]
-    state['source'] = ["/u/chokyun/tmp3/hal/phrase-table.out.shuf.zh.h5"]
-    state['indx_word_target'] = "/u/chokyun/tmp3/hal/train.out.en.indict.pkl"
-    state['indx_word'] = "/u/chokyun/tmp3/hal/train.out.zh.indict.pkl"
-    state['word_indx_trgt'] = "/u/chokyun/tmp3/hal/train.out.en.dict.pkl"
-    state['word_indx'] = "/u/chokyun/tmp3/hal/train.out.zh.dict.pkl"
-
-    state['null_sym_source'] = 15000
-    state['null_sym_target'] = 15000
-
-    state['n_sym_source'] = state['null_sym_source'] + 1
-    state['n_sym_target'] = state['null_sym_target'] + 1
-
-    state['seqlen'] = 50
-
-    state['dim'] = 1000
-    state['rank_n_approx'] = 620
-    state['bs']  = 80
-
-    state['prefix'] = 'phrase_en_zh_'
-
     return state
