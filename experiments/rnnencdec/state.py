@@ -1,4 +1,8 @@
-def prototype_state():
+def prototype_phrase_state():
+    """This prototype is the configuration used in the paper
+    'Learning Phrase Representations using RNN Encoder-Decoder
+    for  Statistical Machine Translation' """
+
     state = {}
 
     # Random seed
@@ -15,8 +19,6 @@ def prototype_state():
     state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.en.pkl"
     state['word_indx_trgt'] = "/data/lisatmp3/bahdanau/vocab.fr.pkl"
     state['oov'] = 'UNK'
-    # TODO: delete this one
-    state['randstart'] = False
 
     # These are unknown words placeholders
     state['unk_sym_source'] = 1
@@ -193,8 +195,11 @@ def prototype_state():
     state['overwrite'] = 1
     return state
 
-def prototype_sentence_state():
-    state = prototype_state()
+def prototype_encdec_state():
+    """This prototype is the configuration used to train the RNNenc-30 model from the paper
+    'Neural Machine Translation by Jointly Learning to Align and Translate' """
+
+    state = prototype_phrase_state()
 
     state['target'] = ["/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/binarized_text.shuffled.fr.h5"]
     state['source'] = ["/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/binarized_text.shuffled.en.h5"]
@@ -219,7 +224,10 @@ def prototype_sentence_state():
     return state
 
 def prototype_search_state():
-    state = prototype_sentence_state()
+    """This prototype is the configuration used to train the RNNsearch-50 model from the paper
+    'Neural Machine Translation by Jointly Learning to Align and Translate' """
+
+    state = prototype_encdec_state()
 
     state['dec_rec_layer'] = 'RecurrentLayerWithSearch'
     state['search'] = True
@@ -231,7 +239,7 @@ def prototype_search_state():
     return state
 
 def prototype_phrase_lstm_state():
-    state = prototype_state()
+    state = prototype_phrase_state()
     state['enc_rec_layer'] = 'LSTMLayer'
     state['enc_rec_gating'] = False
     state['enc_rec_reseting'] = False

@@ -53,7 +53,7 @@ class RandomSamplePrinter(object):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--state", help="State to use")
-    parser.add_argument("--proto",  default="prototype_state",
+    parser.add_argument("--proto",  default="prototype_search_state",
         help="Prototype state to use for state")
     parser.add_argument("--skip-init", action="store_true",
         help="Skip parameter initilization")

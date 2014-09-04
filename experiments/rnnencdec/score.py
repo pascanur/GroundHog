@@ -11,9 +11,9 @@ import numpy
 
 from experiments.rnnencdec import\
         RNNEncoderDecoder,\
-        prototype_state,\
         parse_input,\
-        get_batch_iterator
+        get_batch_iterator,\
+        prototype_phrase_state
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class BatchBiTxtIterator(object):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--state", help="State to use")
+    parser.add_argument("--state", required=True, help="State to use")
 
     # Paths
     parser.add_argument("--src", help="Source phrases")
@@ -105,10 +105,9 @@ def parse_args():
 def main():
     args = parse_args()
 
-    state = prototype_state()
-    if hasattr(args, 'state'):
-        with open(args.state) as src:
-            state.update(cPickle.load(src))
+    state = prototype_phrase_state()
+    with open(args.state) as src:
+        state.update(cPickle.load(src))
     state.update(eval("dict({})".format(args.changes)))
 
     state['sort_k_batches'] = 1
