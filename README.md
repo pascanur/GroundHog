@@ -28,6 +28,30 @@ List of Experiments
 - experiments/rnnencdec/
   Neural machine translation
 
+Neural Machine Translation
+--------------------------
+
+The folder experiments/rnnencdec contains the implementations of "RNN Encoder-Decoder"
+and "RNN Search" translation models used for the paper
+"Neural Machine Translation by Jointly Learning to Align and Translate" 
+(http://arxiv.org/abs/1409.0473). The code is structured as follows:
+
+- encdec.py contains the actual models code
+- train.py is a script to train a new model or continue training an existing one
+- sample.py can be used to sample translations from the model 
+  (or to find the most probable translations)
+- score.py is used to score sentences pairs, that is to compute log-likelihood 
+  of a translation to be generated from a source sentence
+- state.py contains prototype states. In this project a *state* means in fact a full
+  specification of the model and training process, including architectural choices,
+  layer sizes, training data and vocabularies. The prototype states in the state.py files
+  are base configurations from which one can start to train a model of his/her choice.
+  The --proto option of the train.py script can be used to start with a particular prototype.
+  
+
+
+
+
 
 
 
