@@ -22,12 +22,6 @@ The library is under the 3-clause BSD license, so it may be used for commercial
 purposes. 
 
 
-List of Experiments
-===================
-
-- experiments/rnnencdec/
-  Neural machine translation
-
 Neural Machine Translation
 --------------------------
 
