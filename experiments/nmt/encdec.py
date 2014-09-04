@@ -1252,10 +1252,33 @@ class Decoder(EncoderDecoderBase):
                 given_init_states=init_states, step_num=step_num)[2:]
 
 class RNNEncoderDecoder(object):
+    """This class encapsulates the translation model.
+
+    The expected usage pattern is:
+    >>> encdec = RNNEncoderDecoder(...)
+    >>> encdec.build(...)
+    >>> useful_smth = encdec.create_useful_smth(...)
+
+    Functions from the create_smth family (except create_lm_model)
+    when called complile and return functions that do useful stuff.
+    """
 
     def __init__(self, state, rng,
             skip_init=False,
             compute_alignment=False):
+        """Constructor.
+
+        :param state:
+            A state in the usual groundhog sense.
+        :param rng:
+            Random number generator. Something like numpy.random.RandomState(seed).
+        :param skip_init:
+            If True, all the layers are initialized with zeros. Saves time spent on
+            parameter initialization if they are loaded later anyway.
+        :param compute_alignment:
+            If True, the alignment is returned by the decoder.
+        """
+
         self.state = state
         self.rng = rng
         self.skip_init = skip_init
