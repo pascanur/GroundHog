@@ -16,7 +16,7 @@ main contributors and maintainers of this fork are currently Dzmitry Bahdanau
 and Kyunghyun Cho.
 
 Most of the library documentation is still work in progress, but check the files
-containing Tut (in scripts) for a quick tutorial on how to use the library.
+containing Tut (in tutorials) for a quick tutorial on how to use the library.
 
 The library is under the 3-clause BSD license, so it may be used for commercial
 purposes. 
