@@ -32,7 +32,7 @@ Neural Machine Translation
 --------------------------
 
 The folder experiments/rnnencdec contains the implementations of "RNN Encoder-Decoder"
-and "RNN Search" translation models used for the paper
+and "RNN Search" translation models used for the paper [1]
 
 ####Code Structure
 
