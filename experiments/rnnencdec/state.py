@@ -220,7 +220,7 @@ def prototype_encdec_state():
     state['rank_n_approx'] = 620
     state['bs']  = 80
 
-    state['prefix'] = 'sentence_'
+    state['prefix'] = 'encdec_'
     return state
 
 def prototype_search_state():
@@ -236,6 +236,7 @@ def prototype_search_state():
     state['backward'] = True
     state['seqlen'] = 50
     state['sort_k_batches'] = 20
+    state['prefix'] = 'search_'
     return state
 
 def prototype_phrase_lstm_state():
