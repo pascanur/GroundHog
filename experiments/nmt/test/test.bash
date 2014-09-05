@@ -6,6 +6,7 @@
 set -ux
 
 STATUS="ok"
+export PYTHONPATH=$GHOG:$PYTHONPATH
 
 echo "Stage 0: Downloading the data"
 
