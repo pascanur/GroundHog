@@ -58,6 +58,9 @@ class BeamSearch(object):
         for k in range(3 * len(seq)):
             if n_samples == 0:
                 break
+
+            # Compute probabilities of the next words for
+            # all the elements of the beam.
             beam_size = len(trans)
             last_words = (numpy.array(map(lambda t : t[-1], trans))
                     if k > 0
@@ -67,6 +70,7 @@ class BeamSearch(object):
             # Adjust log probs according to search restrictions
             if ignore_unk:
                 log_probs[:,self.unk_id] = -numpy.inf
+            # TODO: report me in the paper!!!
             if k < minlen:
                 log_probs[:,self.eos_id] = -numpy.inf
 
@@ -83,6 +87,7 @@ class BeamSearch(object):
             word_indices = best_costs_indices % voc_size
             costs = flat_next_costs[best_costs_indices]
 
+            # Form a beam for the next iteration
             new_trans = [[]] * n_samples
             new_costs = numpy.zeros(n_samples)
             new_states = [numpy.zeros((n_samples, dim), dtype="float32") for level
@@ -95,9 +100,9 @@ class BeamSearch(object):
                 for level in range(num_levels):
                     new_states[level][i] = states[level][orig_idx]
                 inputs[i] = next_word
-
             new_states = self.comp_next_states(c, k, inputs, *new_states)
 
+            # Filter the sequences that end with end-of-sequence character
             trans = []
             costs = []
             indices = []
