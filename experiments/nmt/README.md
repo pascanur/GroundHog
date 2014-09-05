@@ -18,6 +18,8 @@ RNNsearch translation models used for the paper [1,2]
   the state.py files are base configurations from which one can start to train a
   model of his/her choice.  The *--proto* option of the train.py script can be
   used to start with a particular prototype.
+
+All the paths below are relative to experiments/nmt.
   
 ####Using training script
 
@@ -108,6 +110,15 @@ Since it can be very expensive to shuffle the dataset each time you train a
 model, we shuffle dataset in advance. However, note that we do keep the original
 files for debugging purpose.
 
+####Tests
+
+Run
+```
+GHOG=/path/to/groundhog test/test.bash
+```
+to test sentence pairs scoring and translation generation. The script will start with creating 
+a workspace directory and download test models there. You can keep using the same test workspace
+and data.
 
 ####Known Issues
 
