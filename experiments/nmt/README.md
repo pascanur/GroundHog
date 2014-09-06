@@ -90,7 +90,7 @@ In experiments/nmt/preprocess, we provide scripts that we use to generate these
 data files from a parallel corpus saved in .txt files. 
 
 ```
-python preprocess.py -d vocab.en.pkl -v 30000 -p binarized_text.en.pkl -p *en.txt.gz
+python preprocess.py -d vocab.en.pkl -v 30000 -b binarized_text.en.pkl -p *en.txt.gz
 ```
 This will create a dictionary (vocab.en.pkl) of 30,000 most frequent words and a
 pickle file (binarized_text.pkl) that contains a list of numpy arrays of which
