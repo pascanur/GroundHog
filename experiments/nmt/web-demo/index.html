@@ -30,9 +30,12 @@
 function get_translation()
 {
 	var source = document.forms.input.source.value;
+	var ignore_unk = 0;
+	if (document.forms.input.ignore_unk.checked)
+		ignore_unk = 1;
 	//document.getElementById('source').innerHTML = source;
 
-	var theUrl = 'sampler.php?source='+source;
+	var theUrl = 'sampler.php?ignore_unk='+ignore_unk+'&source='+source;
 	//document.getElementById('request').innerHTML = theUrl;
 
 	var xmlHttp = new XMLHttpRequest();
@@ -83,7 +86,9 @@ function get_translation()
       <div class="input-group">
 	      <span class="input-group-addon">EN<span class="glyphicon
                 glyphicon-chevron-right"></span>FR</span>
-	      <input type="text" class="form-control" id='source' placeholder="Enter a sentence in English here..">
+	      <input type="text"  style="width:70%" class="form-control" id='source' placeholder="Enter a sentence in English here..">&nbsp;
+      <button type="submit" class="btn btn-default">Translate!</button>
+      <input type="checkbox" id='ignore_unk'>&nbsp;&nbsp;Do not sample [UNK]</button>
       </div>
       </form>
 <div style='padding:5px'>
