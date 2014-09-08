@@ -125,22 +125,13 @@ function get_translation()
       <div class="col-md-4" style="font-size:15px">
         <h3>How does this work?</h3>
         <p style='font-size:15px'>
-	  <strong>Neural machine translation</strong> system often consists of
-	  two recurrent neural networks (RNN). The first RNN encodes a source
-	  sentence into a vector, or a sequence of vectors, and the second one
-	  decodes a correct translation given the found representation. This
-	  allows us to train the whole system jointly to maximize the
-	  translation performance, unlike more traditional approaches.a 
-        </p>
-        <p style='font-size:15px'>
-          For more details please look at the following papers on arXiv.org: 
-          <ul>
-          <li> <a href="http://arxiv.org/">Neural Machine Translation
-          by Jointly Learning to Align and Translate</a> </li>
-          <li> <a href="http://arxiv.org/abs/1406.1078">Learning
-          Phrase Representations using RNN Encoder-Decoder for Statistical
-          Machine Translation</a> </li>
-          </ul>
+	  <strong>Neural machine translation</strong> is a new approach to
+	  machine translation, where we train a single, large neural network
+	  jointly to maximize the translation performance.  This is a radical
+	  departure from existing machine translation approaches, where often a
+	  translation system consists of many subcomponents which are optimized
+	  separately with, potentially, separate objective functions (not
+	  necessarily the final translation quality!). 
         </p>
       </div>
       <div class="col-md-4" style="font-size:15px">
@@ -171,6 +162,29 @@ function get_translation()
 	</p>
       </div>
       </div>
+	<div class="row">
+	<h3>Do you want to know more about <strong>neural machine
+	translation</strong>?</h3>
+        <p style='font-size:15px'>
+          Please, look at the following papers:
+          <ul>
+	  <li> D. Bahdanau, K. Cho, Y. Bengio.<a
+	  href="http://arxiv.org/abs/1409.0473">Neural Machine Translation by
+	  Jointly Learning to Align and Translate</a>. 2014.</li>
+          <li> K. Cho, B. van Merrienboer, C. Gulcehre, D.
+          Bahdanau, F. Bougares, H. Schwenk, Y. Bengio. <a href="http://arxiv.org/abs/1406.1078">Learning
+          Phrase Representations using RNN Encoder-Decoder for Statistical
+          Machine Translation</a>. EMNLP 2014. </li>
+	  <li> K. Cho, B. van Merrienboer, D. Bahdanau, Y.  Bengio. <a
+	  href="http://arxiv.org/abs/1409.1259">On the Properties of Neural
+	  Machine Translation: Encoder-Decoder Approaches</a>. SSST-8 2014.</li>
+	  <li> J. Pouget-Abadie, D. Bahdanau, B. van Merrienboer, K. Cho, Y.
+	  Bengio. <a href="http://arxiv.org/abs/1409.1257">Overcoming the Curse
+	  of Sentence Length for Neural Machine Translation using Automatic
+	  Segmentation</a>. SSST-8 2014.</li>
+          </ul>
+        </p>
+	</div>
 
       <hr>
 
