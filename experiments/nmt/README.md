@@ -18,6 +18,8 @@ RNNsearch translation models used for the paper [1,2]
   the state.py files are base configurations from which one can start to train a
   model of his/her choice.  The *--proto* option of the train.py script can be
   used to start with a particular prototype.
+- preprocess/*.py are the scripts used to preprocess a parallel corpus to obtain
+  a dataset (see 'Data Preparation' below for more detail.)
 
 All the paths below are relative to experiments/nmt.
   

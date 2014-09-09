@@ -25,5 +25,5 @@ purposes.
 Neural Machine Translation
 --------------------------
 
-See experiments/nmt/README
+See experiments/nmt/README.md
 
