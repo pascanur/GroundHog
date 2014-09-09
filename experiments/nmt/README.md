@@ -20,6 +20,8 @@ RNNsearch translation models used for the paper [1,2]
   used to start with a particular prototype.
 - preprocess/*.py are the scripts used to preprocess a parallel corpus to obtain
   a dataset (see 'Data Preparation' below for more detail.)
+- web-demo/ contains files for running a web-based demonstration of a trained
+  neural machine translation model (see web-demo/README.me for more detail).
 
 All the paths below are relative to experiments/nmt.
   
