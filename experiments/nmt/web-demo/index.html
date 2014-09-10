@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <!--<link rel="icon" href="../../favicon.ico">-->
+
+    <title>Neural Machine Translation</title>
+
+    <!-- Bootstrap core CSS -->
+    <link href="bootstrap/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom styles for this template -->
+    <link href="jumbotron.css" rel="stylesheet">
+
+    <!-- Just for debugging purposes. Don't actually copy these 2 lines! -->
+    <!--[if lt IE 9]><script src="../../assets/js/ie8-responsive-file-warning.js"></script><![endif]-->
+    <script src="bootstrap/js/ie-emulation-modes-warning.js"></script>
+
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+      <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
+      <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+	<script>
+function get_translation()
+{
+	var source = document.forms.input.source.value;
+	var ignore_unk = 0;
+	if (document.forms.input.ignore_unk.checked)
+		ignore_unk = 1;
+	//document.getElementById('source').innerHTML = source;
+
+	var theUrl = 'sampler.php?ignore_unk='+ignore_unk+'&source='+source;
+	//document.getElementById('request').innerHTML = theUrl;
+
+	var xmlHttp = new XMLHttpRequest();
+	xmlHttp.open("GET", theUrl, false);
+	xmlHttp.send();
+
+	var response = xmlHttp.responseText.split('\n');
+	document.getElementById('translation').innerHTML = response[0];
+	var unknown_words = '';
+	for (var i = 0; i < response.length-1; i++)
+	{
+		if (response[i+1].length > 1)
+		{
+			unknown_words += response[i+1];
+			if (i == response.length-2) 
+				unknown_words += ',';
+		}
+	}
+	if (unknown_words.length > 0)
+	{
+		document.getElementById('unknown_panel').style.display='block';
+		document.getElementById('unknown').innerHTML = unknown_words;
+	}
+	else
+	{
+		document.getElementById('unknown_panel').style.display='none';
+	}
+}
+	</script>
+  </head>
+
+  <body>
+
+    <div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+      <div class="container">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="#">Neural Machine Translation by LISA Lab, University of Montreal</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main jumbotron for a primary marketing message or call to action -->
+    <div class="jumbotron">
+      <div class="container">
+	<div style='padding:15px'>
+	</div>
+	<form id='input' onsubmit='get_translation(); return false;'>
+      <div class="input-group">
+	      <span class="input-group-addon">EN<span class="glyphicon
+                glyphicon-chevron-right"></span>FR</span>
+	      <input type="text"  style="width:70%" class="form-control" id='source' placeholder="Enter a sentence in English here..">&nbsp;
+      <button type="submit" class="btn btn-default">Translate!</button>
+      <input type="checkbox" id='ignore_unk'>&nbsp;&nbsp;Do not sample [UNK]</button>
+      </div>
+      </form>
+<div style='padding:5px'>
+</div>
+<div class="panel panel-default">
+  <div class="panel-heading">Translation</div>
+  <div class="panel-body" id='translation'>
+	..
+  </div>
+</div>
+<div id='unknown_panel' style='display:none'>
+	<div style='padding:5px'>
+	</div>
+	<div class="panel panel-default">
+	  <div class="panel-heading"><strong>Unknown words!</strong> We are afraid that our model did not recognize these words</div>
+	  <div class="panel-body" id='unknown'>
+		..
+	  </div>
+	</div>
+</div>
+      </div>
+
+    <div class="container">
+      <!-- Example row of columns -->
+      <div class="row">
+	<p style='font-size:18px'>
+        Our network was trained on a lot of data from the United Nations and the
+        European Parliament, so these are the kind of sentences that it does
+        well on. Give them a try!
+	</p>
+      <ul class="lead" style='font-size:16px'>
+        <li>Economic growth has slowed down in recent years.</li>
+        <li>The war in the Middle East is almost over.</li>
+        <li>The European Parliament has decided to support the rebel factions in
+          Eastern Asia, considering the recent political developments.</li>
+      </ul>
+      </div>
+      <div class="row">
+      <div class="col-md-4" style="font-size:15px">
+        <h3>How does this work?</h3>
+        <p style='font-size:15px'>
+	  <strong>Neural machine translation</strong> is a new approach to
+	  machine translation, where we train a single, large neural network
+	  jointly to maximize the translation performance.  This is a radical
+	  departure from existing machine translation approaches, where often a
+	  translation system consists of many subcomponents which are optimized
+	  separately with, potentially, separate objective functions (not
+	  necessarily the final translation quality!). 
+        </p>
+      </div>
+      <div class="col-md-4" style="font-size:15px">
+        <h3>Why does it not translate my sentence well?</h3>
+	<p style='font-size:15px'>There can be many reasons as to why our
+	<strong>neural machine translation</strong> system failed to translate
+	the phrase you asked it to translate. Our model is relatively small
+	compared to traditional phrase-based models, and only knows 30,000
+	French and English words. If it doesn't know the words you are asking
+	it to translate, it can get very confused! The model is also trained on
+	domain-specific texts, so it sometimes has more trouble translating a
+	simple "Hi, how are you?" than a lengthy statement on South-American
+	politics.
+      </div>
+      <div class="col-md-4" style="font-size:15px">
+        <h3>Who made this?</h3>
+	<p style='font-size:15px'>The <strong>neural machine
+	translation</strong> model was developed at LISA, the machine learning
+	laboratory of the University of Montreal, mainly by
+	<ul>
+        <li> KyungHyun Cho</li>
+	<li> &#xC7;a&#x11F;lar G&#xFC;l&#xE7;ehre</li> 
+        <li> Bart van Merri&#xEB;nboer</li>
+	<li> Dzimitry Bahdanau</li>
+	<li> Jean Pouget-Abadie</li>
+	<li> Yoshua Bengio</li> 
+	</ul>
+	</p>
+      </div>
+      </div>
+	<div class="row">
+	<h3>Do you want to know more about <strong>neural machine
+	translation</strong>?</h3>
+        <p style='font-size:15px'>
+          Please, look at the following papers:
+          <ul>
+	  <li> D. Bahdanau, K. Cho, Y. Bengio.<a
+	  href="http://arxiv.org/abs/1409.0473">Neural Machine Translation by
+	  Jointly Learning to Align and Translate</a>. 2014.</li>
+          <li> K. Cho, B. van Merrienboer, C. Gulcehre, D.
+          Bahdanau, F. Bougares, H. Schwenk, Y. Bengio. <a href="http://arxiv.org/abs/1406.1078">Learning
+          Phrase Representations using RNN Encoder-Decoder for Statistical
+          Machine Translation</a>. EMNLP 2014. </li>
+	  <li> K. Cho, B. van Merrienboer, D. Bahdanau, Y.  Bengio. <a
+	  href="http://arxiv.org/abs/1409.1259">On the Properties of Neural
+	  Machine Translation: Encoder-Decoder Approaches</a>. SSST-8 2014.</li>
+	  <li> J. Pouget-Abadie, D. Bahdanau, B. van Merrienboer, K. Cho, Y.
+	  Bengio. <a href="http://arxiv.org/abs/1409.1257">Overcoming the Curse
+	  of Sentence Length for Neural Machine Translation using Automatic
+	  Segmentation</a>. SSST-8 2014.</li>
+          </ul>
+        </p>
+	</div>
+
+      <hr>
+
+      <footer>
+        <p style="font-size:16px">&copy; LISA Lab, University of Montreal 2014</p>
+      </footer>
+    </div> <!-- /container -->
+    </div>
+
+
+    <!-- Bootstrap core JavaScript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+    <script src="bootstrap/js/bootstrap.min.js"></script>
+    <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
+    <script src="bootstrap/js/ie10-viewport-bug-workaround.js"></script>
+  </body>
+</html>

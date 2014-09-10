@@ -2,7 +2,7 @@ GroundHog by lisa-groundhog
 ===========================
 
 GroundHog is a python framework on top of Theano
-(http://deeplearning.net/softward/theano/) that aims to provide a flexible, yet
+(http://deeplearning.net/software/theano/) that aims to provide a flexible, yet
 efficient way of implementing complex recurrent neural network models. It
 supports a variety of recurrent layers, such as DT-RNN, DOT-RNN, RNN with gated
 hidden units and LSTM. Furthermore, it enables the flexible combination of
@@ -25,5 +25,5 @@ purposes.
 Neural Machine Translation
 --------------------------
 
-See experiments/nmt/README
+See experiments/nmt/README.md
 

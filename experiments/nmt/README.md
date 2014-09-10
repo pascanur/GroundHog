@@ -18,6 +18,10 @@ RNNsearch translation models used for the paper [1,2]
   the state.py files are base configurations from which one can start to train a
   model of his/her choice.  The *--proto* option of the train.py script can be
   used to start with a particular prototype.
+- preprocess/*.py are the scripts used to preprocess a parallel corpus to obtain
+  a dataset (see 'Data Preparation' below for more detail.)
+- web-demo/ contains files for running a web-based demonstration of a trained
+  neural machine translation model (see web-demo/README.me for more detail).
 
 All the paths below are relative to experiments/nmt.
   
@@ -90,7 +94,7 @@ In experiments/nmt/preprocess, we provide scripts that we use to generate these
 data files from a parallel corpus saved in .txt files. 
 
 ```
-python preprocess.py -d vocab.en.pkl -v 30000 -p binarized_text.en.pkl -p *en.txt.gz
+python preprocess.py -d vocab.en.pkl -v 30000 -b binarized_text.en.pkl -p *en.txt.gz
 ```
 This will create a dictionary (vocab.en.pkl) of 30,000 most frequent words and a
 pickle file (binarized_text.pkl) that contains a list of numpy arrays of which
