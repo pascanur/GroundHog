@@ -11,11 +11,13 @@ set -u
 
 STATUS="ok"
 export PYTHONPATH=$GHOG:$PYTHONPATH
+DIFF=diff
+NUMDIFF=$GHOG/experiments/nmt/test/diff.py
 
 function check_result() {
-    if ! diff $1 $GHOG/experiments/nmt/test/$1
+    if ! $1 $2 $GHOG/experiments/nmt/test/$2
     then
-        echo $2
+        echo $3
         STATUS="failed"
     else
         echo "OK"
@@ -47,20 +49,20 @@ echo "Stage 1: Test scoring"
 SCORE="$GHOG/experiments/nmt/score.py --mode=batch --src=english.txt --trg=french.txt --allow-unk"
 echo "Score with RNNencdec"
 $SCORE --state encdec_state.pkl encdec_model.npz >encdec_scores.txt 2>>log.txt
-check_result encdec_scores.txt "RNNencdec scores changed!"
+check_result $NUMDIFF encdec_scores.txt "RNNencdec scores changed!"
 echo "Score with RNNsearch"
 $SCORE --state search_state.pkl search_model.npz >search_scores.txt 2>>log.txt
-check_result search_scores.txt "RNNsearch scores changed!"
+check_result $NUMDIFF search_scores.txt "RNNsearch scores changed!"
 
 echo "Stage 2: Test sampling"
 
 SAMPLE="$GHOG/experiments/nmt/sample.py --source=english.txt --beam-search --beam-size 10"
 echo "Sample with RNNencdec"
 $SAMPLE --trans encdec_trans.txt --state encdec_state.pkl encdec_model.npz 2>>log.txt
-check_result encdec_trans.txt "RNNencdec translations changed!"
+check_result $DIFF encdec_trans.txt "RNNencdec translations changed!"
 echo "Sample with RNNsearch"
 $SAMPLE --trans search_trans.txt --state search_state.pkl search_model.npz 2>>log.txt
-check_result search_trans.txt "RNNsearch translation changed!"
+check_result $DIFF search_trans.txt "RNNsearch translation changed!"
 
 if [ $STATUS != "ok" ]
 then
