@@ -191,7 +191,7 @@ def prototype_phrase_state():
     # Number of batches to process
     state['loopIters'] = 3000000
     # Maximum number of minutes to run
-    state['timeStop'] = 24*60*7
+    state['timeStop'] = 24*60*31
     # Error level to stop at
     state['minerr'] = -1
 
