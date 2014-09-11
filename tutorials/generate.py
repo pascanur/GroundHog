@@ -83,23 +83,23 @@ def main(parser):
     print 'Constructing test set'
     test = grab_text(dataset, 'test', vocab, oov_default, o.dtype, o.level)
     print 'Saving data'
+
+    if o.level == 'words':
+        data = {'train_words': train, 'valid_words': valid, 'test_words': test, 'n_words': len(vocab)}
+    else:
+        data = {'train_chars': train, 'valid_chars': valid, 'test_chars': test, 'n_chars': len(vocab)}
+    keys = {'oov': oov_default, 'freqs': numpy.array(freqs), 'vocabulary': vocab, 'freq_wd': freq_wd}
+    all_keys = dict(keys.items() + data.items())
     
-    numpy.savez(o.dest,
-                train_words=train,
-                valid_words=valid,
-                test_words=test,
-                oov=oov_default,
-                freqs = numpy.array(freqs),
-                n_words=len(vocab),
-                n_chars=0,
-                vocabulary = vocab,
-                freq_wd = freq_wd
-               )
+    numpy.savez(o.dest, **all_keys)
     inv_map = [None] * len(vocab.items())
     for k, v in vocab.items():
         inv_map[v] = k
 
-    numpy.savez(o.dest+"_dict", unique_words=inv_map)
+    if o.level == 'words':
+        numpy.savez(o.dest+"_dict", unique_words=inv_map)
+    else:
+        numpy.savez(o.dest+"_dict", unique_chars=inv_map)
     print '... Done'
 
 
@@ -121,6 +121,9 @@ will contain the following fields:
     'oov' : The value representing the out of vocabulary word
     'vocab_size' : The size of the vocabulary (this number does not account
                    for oov
+
+FIXME: The current script supports generating a .npz file with either character
+sequences or word sequences only.
     """
     parser = argparse.ArgumentParser(usage=usage)
     parser.add_argument('path', 
@@ -131,7 +134,7 @@ will contain the following fields:
                             'under what name and at what path). It will generate {dest}.npz and {dest}_dict.npz'),
                       default='tmp_data')
     parser.add_argument('--level',
-                      help=('Processing level. Either `words` or `letter`. '
+                      help=('Processing level. Either `words` or `chars`. '
                             'If set to word, the result dataset has one '
                             'token per word, otherwise a token per letter'),
                       default='words')

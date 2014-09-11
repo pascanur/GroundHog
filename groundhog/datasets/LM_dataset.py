@@ -108,8 +108,8 @@ class LMIterator(object):
 
         penn_data = numpy.load(self.path, mmap_mode=mmap_mode)
 
-        self.penn_nwords = penn_data["n_words"]
-        self.penn_nchars = penn_data["n_chars"]
+        self.penn_nwords = penn_data["n_words"] if 'n_words' in penn_data else 0
+        self.penn_nchars = penn_data["n_chars"] if 'n_chars' in penn_data else 0
 
 
         if self.chunks == "words":
