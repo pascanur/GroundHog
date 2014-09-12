@@ -352,8 +352,9 @@ class RecurrentLayerWithSearch(Layer):
         if cndim == 2:
             c = c[:, None, :]
 
-        # Warning: either source_num or target_num should be equal, or on of them sould be 1 (they have to broadcast)
-        # for the following code to make any sense.
+        # Warning: either source_num or target_num should be equal,
+        #          or on of them sould be 1 (they have to broadcast)
+        #          for the following code to make any sense.
         source_len = c.shape[0]
         source_num = c.shape[1]
         target_num = state_before.shape[0]
