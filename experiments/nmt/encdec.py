@@ -287,8 +287,7 @@ class RecurrentLayerWithSearch(Layer):
                 name="D_%s"%self.name)
         self.params.append(self.D_pe)
         self.params_grad_scale = [self.grad_scale for x in self.params]
-        self.restricted_params = [x for x in self.params]
-
+       
     def set_decoding_layers(self, c_inputer, c_reseter, c_updater):
         self.c_inputer = c_inputer
         self.c_reseter = c_reseter
@@ -353,7 +352,7 @@ class RecurrentLayerWithSearch(Layer):
         if cndim == 2:
             c = c[:, None, :]
 
-        # Warning: either source_num or target_num should be 1
+        # Warning: either source_num or target_num should be equal, or on of them sould be 1 (they have to broadcast)
         # for the following code to make any sense.
         source_len = c.shape[0]
         source_num = c.shape[1]
@@ -459,26 +458,27 @@ class RecurrentLayerWithSearch(Layer):
             else:
                 init_state = TT.alloc(floatX(0), self.n_hids)
 
+        p_from_c =  utils.dot(c, self.A_cp).reshape(
+                (c.shape[0], c.shape[1], self.n_hids))
+        
         if mask:
             sequences = [state_below, mask, updater_below, reseter_below]
-            non_sequences = [c_mask]
-            fn = lambda x, m, g, r, h, c1, cm, pc : self.step_fprop(x, h, mask=m,
+            non_sequences = [c, c_mask, p_from_c] 
+            #              seqs    | out |  non_seqs
+            fn = lambda x, m, g, r,   h,   c1, cm, pc : self.step_fprop(x, h, mask=m,
                     gater_below=g, reseter_below=r,
                     c=c1, p_from_c=pc, c_mask=cm,
                     use_noise=use_noise, no_noise_bias=no_noise_bias,
                     return_alignment=return_alignment)
         else:
             sequences = [state_below, updater_below, reseter_below]
-            non_sequences = []
-            fn = lambda x, g, r, h, c1, pc : self.step_fprop(x, h,
+            non_sequences = [c, p_from_c]
+            #            seqs   | out | non_seqs
+            fn = lambda x, g, r,   h,    c1, pc : self.step_fprop(x, h,
                     gater_below=g, reseter_below=r,
                     c=c1, p_from_c=pc,
                     use_noise=use_noise, no_noise_bias=no_noise_bias,
                     return_alignment=return_alignment)
-
-        p_from_c =  utils.dot(c, self.A_cp).reshape(
-                (c.shape[0], c.shape[1], self.n_hids))
-        non_sequences = [c] + non_sequences + [p_from_c]
 
         outputs_info = [init_state, None]
         if return_alignment:
@@ -1028,7 +1028,7 @@ class Decoder(EncoderDecoderBase):
         # Low rank embeddings are projected to contribute
         # to input, reset and update signals.
         # All the shapes if mode == evaluation:
-        #   (n_words, dim)
+        #   ((max_seq_len * batch_size), dim)
         # All the shape if mode != evaluation:
         #   (n_samples, dim)
         input_signals = []
@@ -1094,10 +1094,14 @@ class Decoder(EncoderDecoderBase):
                     **add_kwargs)
             if self.state['search']:
                 if self.compute_alignment:
+                    #This implicitly wraps each element of result.out with a Layer to keep track of the parameters.
+                    #It is equivalent to h=result[0], ctx=result[1] etc. 
                     h, ctx, alignment = result
                     if mode == Decoder.EVALUATION:
                         alignment = alignment.out
                 else:
+                    #This implicitly wraps each element of result.out with a Layer to keep track of the parameters.
+                    #It is equivalent to h=result[0], ctx=result[1]
                     h, ctx = result
             else:
                 h = result
