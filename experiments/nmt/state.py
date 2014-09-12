@@ -1,8 +1,4 @@
-def prototype_phrase_state():
-    """This prototype is the configuration used in the paper
-    'Learning Phrase Representations using RNN Encoder-Decoder
-    for  Statistical Machine Translation' """
-
+def prototype_state():
     state = {}
 
     # Random seed
@@ -11,21 +7,23 @@ def prototype_phrase_state():
     state['level'] = 'DEBUG'
 
     # ----- DATA -----
+    # (all Nones in this section are placeholders for required values)
 
-    # Source sequences
-    state['source'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.en.h5"]
-    # Target sequences
-    state['target'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.fr.h5"]
+    # Source sequences (must be singleton list for backward compatibility)
+    state['source'] = [None]
+    # Target sequences (must be singleton list for backard compatiblity)
+    state['target'] = [None]
     # index -> word dict for the source language
-    state['indx_word'] = "/data/lisatmp3/chokyun/mt/ivocab_source.pkl"
+    state['indx_word'] = None
     # index -> word dict for the target language
-    state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/ivocab_target.pkl"
+    state['indx_word_target'] = None
     # word -> index dict for the source language
-    state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.en.pkl"
+    state['word_indx'] = None
     # word -> index dict for the target language
-    state['word_indx_trgt'] = "/data/lisatmp3/bahdanau/vocab.fr.pkl"
+    state['word_indx_trgt'] = None
 
     # ----- VOCABULARIES -----
+    # (all Nones in this section are placeholders for required values)
 
     # A string representation for the unknown word placeholder for both language
     state['oov'] = 'UNK'
@@ -33,11 +31,11 @@ def prototype_phrase_state():
     state['unk_sym_source'] = 1
     state['unk_sym_target'] = 1
     # These are end-of-sequence marks
-    state['null_sym_source'] = 15000
-    state['null_sym_target'] = 15000
+    state['null_sym_source'] = None
+    state['null_sym_target'] = None
     # These are vocabulary sizes for the source and target languages
-    state['n_sym_source'] = state['null_sym_source'] + 1
-    state['n_sym_target'] = state['null_sym_target'] + 1
+    state['n_sym_source'] = None
+    state['n_sym_target'] = None
 
     # ----- MODEL STRUCTURE -----
 
@@ -212,13 +210,35 @@ def prototype_phrase_state():
 
     # Raise exception if nan
     state['on_nan'] = 'raise'
+
+    return state
+
+def prototype_phrase_state():
+    """This prototype is the configuration used in the paper
+    'Learning Phrase Representations using RNN Encoder-Decoder
+    for  Statistical Machine Translation' """
+
+    state = prototype_state()
+
+    state['source'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.en.h5"]
+    state['target'] = ["/data/lisatmp3/bahdanau/shuffled/phrase-table.fr.h5"]
+    state['indx_word'] = "/data/lisatmp3/chokyun/mt/ivocab_source.pkl"
+    state['indx_word_target'] = "/data/lisatmp3/chokyun/mt/ivocab_target.pkl"
+    state['word_indx'] = "/data/lisatmp3/chokyun/mt/vocab.en.pkl"
+    state['word_indx_trgt'] = "/data/lisatmp3/bahdanau/vocab.fr.pkl"
+
+    state['null_sym_source'] = 15000
+    state['null_sym_target'] = 15000
+    state['n_sym_source'] = state['null_sym_source'] + 1
+    state['n_sym_target'] = state['null_sym_target'] + 1
+
     return state
 
 def prototype_encdec_state():
     """This prototype is the configuration used to train the RNNenc-30 model from the paper
     'Neural Machine Translation by Jointly Learning to Align and Translate' """
 
-    state = prototype_phrase_state()
+    state = prototype_state()
 
     state['target'] = ["/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/binarized_text.shuffled.fr.h5"]
     state['source'] = ["/data/lisatmp3/chokyun/mt/vocab.unlimited/bitexts.selected/binarized_text.shuffled.en.h5"]
@@ -229,17 +249,17 @@ def prototype_encdec_state():
 
     state['null_sym_source'] = 30000
     state['null_sym_target'] = 30000
-
     state['n_sym_source'] = state['null_sym_source'] + 1
     state['n_sym_target'] = state['null_sym_target'] + 1
 
     state['seqlen'] = 30
+    state['bs']  = 80
 
     state['dim'] = 1000
     state['rank_n_approx'] = 620
-    state['bs']  = 80
 
     state['prefix'] = 'encdec_'
+
     return state
 
 def prototype_search_state():
@@ -256,10 +276,12 @@ def prototype_search_state():
     state['seqlen'] = 50
     state['sort_k_batches'] = 20
     state['prefix'] = 'search_'
+
     return state
 
 def prototype_phrase_lstm_state():
     state = prototype_phrase_state()
+
     state['enc_rec_layer'] = 'LSTMLayer'
     state['enc_rec_gating'] = False
     state['enc_rec_reseting'] = False
@@ -267,6 +289,6 @@ def prototype_phrase_lstm_state():
     state['dec_rec_gating'] = False
     state['dec_rec_reseting'] = False
     state['dim_mult'] = 4
-
     state['prefix'] = 'phrase_lstm_'
+
     return state

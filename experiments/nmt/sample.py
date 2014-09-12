@@ -12,7 +12,7 @@ import numpy
 import experiments.nmt
 from experiments.nmt import\
     RNNEncoderDecoder,\
-    prototype_phrase_state,\
+    prototype_state,\
     parse_input
 
 logger = logging.getLogger(__name__)
@@ -220,7 +220,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    state = prototype_phrase_state()
+    state = prototype_state()
     with open(args.state) as src:
         state.update(cPickle.load(src))
     state.update(eval("dict({})".format(args.changes)))
