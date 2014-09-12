@@ -140,7 +140,7 @@ def main():
                     state['bs'], raise_unk=not args.allow_unk)
             data_iter.start()
         else:
-            data_iter = get_batch_iterator(state, rng)
+            data_iter = get_batch_iterator(state)
             data_iter.start(0)
 
         score_file = open(args.scores, "w") if args.scores else sys.stdout

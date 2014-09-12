@@ -128,7 +128,7 @@ def create_padded_batch(state, x, y, return_dict=False):
     else:
         return X, Xmask, Y, Ymask
 
-def get_batch_iterator(state, rng):
+def get_batch_iterator(state):
 
     class Iterator(PytablesBitextIterator):
 
@@ -237,7 +237,6 @@ class RecurrentLayerWithSearch(Layer):
         super(RecurrentLayerWithSearch, self).__init__(self.n_hids,
                 self.n_hids, rng, name)
 
-        self.trng = RandomStreams(self.rng.randint(int(1e6)))
         self.params = []
         self._init_params()
 

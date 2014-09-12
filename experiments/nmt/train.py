@@ -82,7 +82,7 @@ def main():
     lm_model = enc_dec.create_lm_model()
 
     logger.debug("Load data")
-    train_data = get_batch_iterator(state, rng)
+    train_data = get_batch_iterator(state)
     logger.debug("Compile trainer")
     algo = eval(state['algo'])(lm_model, state, train_data)
     logger.debug("Run training")
