@@ -15,6 +15,8 @@ from experiments.nmt import\
     prototype_phrase_state,\
     parse_input
 
+from experiments.nmt.numpy_compat import argpartition
+
 logger = logging.getLogger(__name__)
 
 class Timer(object):
@@ -77,7 +79,7 @@ class BeamSearch(object):
             # Find the best options by calling argpartition of flatten array
             next_costs = numpy.array(costs)[:, None] - log_probs
             flat_next_costs = next_costs.flatten()
-            best_costs_indices = numpy.argpartition(
+            best_costs_indices = argpartition(
                     flat_next_costs.flatten(),
                     n_samples)[:n_samples]
 
