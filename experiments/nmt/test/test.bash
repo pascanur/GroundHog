@@ -61,7 +61,7 @@ echo "Sample with RNNencdec"
 $SAMPLE --trans encdec_trans.txt --state encdec_state.pkl encdec_model.npz 2>>log.txt
 check_result $DIFF encdec_trans.txt "RNNencdec translations changed!"
 echo "Sample with RNNsearch"
-$SAMPLE --trans search_trans.txt --state search_state.pkl search_model.npz 2>>log.txt
+THEANO_FLAGS="on_unused_input=warn" $SAMPLE --trans search_trans.txt --state search_state.pkl search_model.npz 2>>log.txt
 check_result $DIFF search_trans.txt "RNNsearch translation changed!"
 
 if [ $STATUS != "ok" ]
