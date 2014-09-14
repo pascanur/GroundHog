@@ -828,7 +828,7 @@ class SigmoidLayer(CostLayer):
                  scale=None,
                  sum_over_time=None,
                  use_noise=True,
-                 additioanl_inputs=None,
+                 additional_inputs=None,
                  no_noise_bias=False):
         """
         See parent class
