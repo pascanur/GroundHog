@@ -170,6 +170,7 @@ class MultiLayer(Layer):
         self.weight_noise = weight_noise
         self.dropout = dropout
         self.n_hids = n_hids
+        self.pieces = [1 for x in n_hids]
         self.learn_bias = learn_bias
         self._init_params()
 
