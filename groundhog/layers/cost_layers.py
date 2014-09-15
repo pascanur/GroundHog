@@ -1131,6 +1131,8 @@ class SoftmaxLayer(CostLayer):
                                      no_noise_bias=no_noise_bias)
             cost = -TT.log(_grab_probs(class_probs, target))
 
+        self.error = TT.cast(TT.sum(
+            TT.neq(class_probs.argmax(1), target)), 'float32')
         self.word_probs = TT.exp(-cost.reshape(target_shape))
         # Set all the probs after the end-of-line to one
         if mask:
