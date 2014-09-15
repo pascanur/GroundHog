@@ -310,9 +310,15 @@ class MainLoop(object):
                         self.channel.save()
                     print 'Got NaN while training'
                     last_cost = 0
+
+                if (numpy.isinf(rvals['cost']) or
+                   numpy.isnan(rvals['cost'])) and\
+                   self.state['on_nan'] == 'warn':
+                    print 'The cost is NaN !!'
+                    last_cost = 0
                 if self.valid_data is not None and\
                    self.step % self.state['validFreq'] == 0 and\
-                   self.step > 0:
+                   self.step > -1:
                     valcost = self.validate()
                     if valcost > self.old_cost * self.state['cost_threshold']:
                         self.patience -= 1
