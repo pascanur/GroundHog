@@ -355,7 +355,7 @@ class MainLoop(object):
             self.channel.save()
         print 'Took', (time.time() - start_time)/60., 'min'
         avg_step = self.timings['time_step'][:self.step].mean()
-        avg_cost2expl = self.timings['log2_p_expl'][:self.step].mean()
+        #avg_cost2expl = self.timings['log2_p_expl'][:self.step].mean()
         print "Average step took {}".format(avg_step)
-        print "That amounts to {} sentences in a day".format(1 / avg_step * 86400 * self.state['bs'])
-        print "Average log2 per example is {}".format(avg_cost2expl)
+        #print "That amounts to {} sentences in a day".format(1 / avg_step * 86400 * self.state['bs'])
+        #print "Average log2 per example is {}".format(avg_cost2expl)
