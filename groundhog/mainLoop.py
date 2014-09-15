@@ -312,7 +312,7 @@ class MainLoop(object):
                     last_cost = 0
                 if self.valid_data is not None and\
                    self.step % self.state['validFreq'] == 0 and\
-                   self.step > 1:
+                   self.step > 0:
                     valcost = self.validate()
                     if valcost > self.old_cost * self.state['cost_threshold']:
                         self.patience -= 1
