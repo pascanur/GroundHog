@@ -1029,7 +1029,8 @@ class Decoder(EncoderDecoderBase):
         # Low rank embeddings are projected to contribute
         # to input, reset and update signals.
         # All the shapes if mode == evaluation:
-        #   ((max_seq_len * batch_size), dim)
+        #   (n_words, dim)
+        # where: n_words = max_seq_len * batch_size
         # All the shape if mode != evaluation:
         #   (n_samples, dim)
         input_signals = []
