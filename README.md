@@ -22,6 +22,19 @@ The library is under the 3-clause BSD license, so it may be used for commercial
 purposes. 
 
 
+Installation
+------------
+To install Groundhog in a multi-user setting (such as the LISA lab)
+
+``python setup.py develop --user``
+
+For general installation, simply use
+
+``python setup.py develop``
+
+NOTE: This will install the development version of Theano, if Theano is not
+currently installed.
+
 Neural Machine Translation
 --------------------------
 
