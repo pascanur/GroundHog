@@ -13,6 +13,7 @@ from groundhog.layers import\
         Layer,\
         MultiLayer,\
         SoftmaxLayer,\
+        HierarchicalSoftmaxLayer,\
         LSTMLayer, \
         RecurrentLayer,\
         RecursiveConvolutionalLayer,\
@@ -895,6 +896,9 @@ class Decoder(EncoderDecoderBase):
                         **decoding_kwargs)
 
     def _create_readout_layers(self):
+        softmax_layer = self.state['softmax_layer'] if 'softmax_layer' in self.state \
+                        else 'SoftmaxLayer'
+
         logger.debug("_create_readout_layers")
 
         readout_kwargs = dict(self.default_kwargs)
@@ -935,7 +939,7 @@ class Decoder(EncoderDecoderBase):
             act_layer = UnaryOp(activation=eval(self.state['unary_activ']))
             drop_layer = DropOp(rng=self.rng, dropout=self.state['dropout'])
             self.output_nonlinearities = [act_layer, drop_layer]
-            self.output_layer = SoftmaxLayer(
+            self.output_layer = eval(softmax_layer)(
                     self.rng,
                     self.state['dim'] / self.state['maxout_part'],
                     self.state['n_sym_target'],
@@ -946,7 +950,7 @@ class Decoder(EncoderDecoderBase):
                     **self.default_kwargs)
         else:
             self.output_nonlinearities = []
-            self.output_layer = SoftmaxLayer(
+            self.output_layer = eval(softmax_layer)(
                     self.rng,
                     self.state['dim'],
                     self.state['n_sym_target'],

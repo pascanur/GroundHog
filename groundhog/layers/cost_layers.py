@@ -16,6 +16,7 @@ import logging
 import theano
 import theano.tensor as TT
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+from theano.sandbox.cuda.blocksparse import sparse_block_dot_SS
 
 from groundhog import utils
 from groundhog.utils import sample_weights, sample_weights_classic,\
@@ -1159,3 +1160,199 @@ class SoftmaxLayer(CostLayer):
         self.mask = mask
         self.cost_scale = scale
         return self.cost
+
+class HierarchicalSoftmaxLayer(SoftmaxLayer):
+    """
+    Hierarchical Softmax output layer (2 layer)
+
+    This is a preliminary implementation of 2-level hierarchical softmax layer (GPU only)
+    """
+
+    def __init__(self, rng,
+                 n_in,
+                 n_out,
+                 scale,
+                 sparsity,
+                 weight_noise=False,
+                 init_fn='sample_weights_classic',
+                 bias_fn='init_bias',
+                 bias_scale=0.,
+                 sum_over_time=True,
+                 grad_scale=1.,
+                 name=None,
+                 **kwargs):
+
+        self.grad_scale = grad_scale
+        super(CostLayer, self).__init__(n_in, n_out, rng, name)
+        self.n_words_class = numpy.ceil(numpy.sqrt(self.n_out)).astype('int64') # oSize
+        self.n_class = numpy.ceil(self.n_out/float(self.n_words_class)).astype('int64') # oBlocks
+        logger.debug("n_words_class = %d, n_class = %d"%(self.n_words_class, self.n_class))
+        self.trng = RandomStreams(self.rng.randint(int(1e6)))
+        if isinstance(bias_fn, str):
+            self.bias_fn = eval(bias_fn)
+        else:
+            self.bias_fn = bias_fn
+        self.bias_scale = bias_scale
+        self.scale = scale
+
+        self.sum_over_time = sum_over_time
+        self.weight_noise = weight_noise
+        self.sparsity = sparsity
+        if self.sparsity < 0:
+            self.sparsity = n_out
+        if type(init_fn) is str:
+            init_fn = eval(init_fn)
+        self.init_fn = init_fn
+        self._init_params()
+
+    def _init_params(self):
+        self.iBlocks = 1  # number of blocks in the input (from lower layer)
+
+        W_em = self.init_fn(self.n_in,
+                            self.n_class,
+                            self.sparsity,
+                            self.scale,
+                            self.rng)
+        self.W_em = theano.shared(W_em,
+                                  name='W_%s' % self.name)
+        self.b_em = theano.shared(
+            self.bias_fn(self.n_class, self.bias_scale, self.rng),
+            name='b_%s' % self.name)
+
+        U_em = theano.shared(((self.rng.rand(self.iBlocks, self.n_class, 
+            self.n_in, self.n_words_class)-0.5)/(self.n_words_class*self.n_in)
+            ).astype(theano.config.floatX), name='U_%s'%self.name)
+        self.U_em = U_em
+        c_em = numpy.zeros((self.n_class, self.n_words_class), dtype='float32')
+        n_words_last_class = self.n_out % self.n_words_class
+        #c_em[-1, n_words_last_class:] = -numpy.inf
+        self.c_em = theano.shared(c_em, name='c_%s' % self.name)
+
+        self.params = [self.W_em, self.b_em, self.U_em, self.c_em]
+        self.params_grad_scale = [self.grad_scale for x in self.params]
+
+    def fprop(self,
+              state_below,
+              temp=numpy.float32(1),
+              use_noise=True,
+              additional_inputs=None,
+              no_noise_bias=False,
+              target=None,
+              full_softmax=True,
+              **kwargs):
+
+        if not full_softmax:
+            assert target != None, 'target must be given'
+
+        W_em = self.W_em
+        U_em = self.U_em
+        b_em = self.b_em
+        c_em = self.c_em
+
+        emb_val = state_below
+        bs = emb_val.shape[0]
+
+        if full_softmax:
+            # compute the probability of every word using scan
+
+            # for all classes
+            class_vecs = TT.arange(self.n_class)
+            class_val = utils.softmax(TT.dot(emb_val, W_em) + b_em)
+
+            def _compute_inclass(classid):
+                # compute the word probabilities
+                outputIdx = TT.alloc(classid, bs)[:, None]
+                word_val = utils.softmax(TT.dot(emb_val, U_em[0, classid, :, :])+c_em[classid,:])
+                word_val = word_val * class_val[:, classid][:,None]
+                return word_val.T
+
+            rval = theano.scan(_compute_inclass, class_vecs, None, name='compute_inclass')
+            all_word_val = rval[0].reshape([rval[0].shape[0]*rval[0].shape[1], rval[0].shape[2]]).T
+            all_word_val = all_word_val[:,:self.n_out]
+            emb_val = all_word_val
+        else:
+            # compute only the probability of given targets
+            if emb_val.ndim == 3:
+                emb_val = emb_val.reshape([emb_val.shape[0]*emb_val.shape[1], emb_val.shape[2]])
+
+            # extract class id's from target indices
+            target = target.flatten()
+            class_vec = target // self.n_words_class  # need to be int/int
+            class_idx_vec = target % self.n_words_class
+            outputIdx = class_vec[:, None]
+
+            # compute the class probabilities
+            class_val = utils.softmax(TT.dot(emb_val, W_em) + b_em)
+
+            # compute the word probabilities
+            word_val = utils.softmax(sparse_block_dot_SS(U_em, 
+                emb_val[:, None, :], TT.zeros((bs, 1), dtype='int64'), c_em, outputIdx)[:, 0, :])
+
+            class_val = class_val[TT.arange(bs), class_vec]
+            word_val = word_val[TT.arange(bs), class_idx_vec]
+            emb_val = class_val * word_val
+
+        #self.preactiv = emb_val
+        self.out = emb_val
+        self.state_below = state_below
+        self.model_output = emb_val
+        return emb_val
+
+    def get_cost(self,
+                 state_below,
+                 target=None,
+                 mask=None,
+                 temp=1,
+                 reg=None,
+                 scale=None,
+                 sum_over_time=False,
+                 no_noise_bias=False,
+                 additional_inputs=None,
+                 use_noise=True):
+        """
+        See parent class
+        """
+
+        assert target, 'Computing the cost requires a target'
+        target_shape = target.shape
+        target_ndim = target.ndim
+        target_shape = target.shape
+
+        class_probs = self.fprop(state_below,
+                                 temp=temp,
+                                 target=target,
+                                 full_softmax=False,
+                                 use_noise=use_noise,
+                                 additional_inputs=additional_inputs,
+                                 no_noise_bias=no_noise_bias)
+        cost = -TT.log(class_probs)
+
+        self.word_probs = TT.exp(-cost.reshape(target_shape))
+        # Set all the probs after the end-of-line to one
+        if mask:
+            self.word_probs = self.word_probs * mask + 1 - mask
+        if mask:
+            cost = cost * TT.cast(mask.flatten(), theano.config.floatX)
+        self.cost_per_sample = (cost.reshape(target_shape).sum(axis=0)
+                if target_ndim > 1
+                else cost)
+
+        if sum_over_time is None:
+            sum_over_time = self.sum_over_time
+        if sum_over_time:
+            if state_below.ndim == 3:
+                cost = cost.reshape((state_below.shape[0],
+                                     state_below.shape[1]))
+                self.cost = cost.mean(1).sum()
+            else:
+                self.cost = cost.sum()
+        else:
+            self.cost = cost.mean()
+        if scale:
+            self.cost = self.cost*scale
+        if reg:
+            self.cost = self.cost + reg
+        self.mask = mask
+        self.cost_scale = scale
+        return self.cost
+
