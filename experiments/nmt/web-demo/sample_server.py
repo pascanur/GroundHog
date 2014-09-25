@@ -35,12 +35,15 @@ class MTReqHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         args = args.split('&')
         source_sentence = None
         ignore_unk = False
+        beamwidth = 10
         for aa in args:
             cc = aa.split('=')
             if cc[0] == 'source':
                 source_sentence = cc[1]
             if cc[0] == 'ignore_unk':
                 ignore_unk = int(cc[1])
+            if cc[0] == 'beamwidth':
+                beamwidth = int(cc[1])
 
         if source_sentence == None:
             self.send_response(400)
@@ -49,7 +52,8 @@ class MTReqHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         source_sentence = urllib.unquote_plus(source_sentence)
         print 'source: ', source_sentence
 
-        translation, unknown_words = self.server.sampler.sample(source_sentence, ignore_unk=ignore_unk)
+        translation, unknown_words = self.server.sampler.sample(
+                source_sentence, ignore_unk=ignore_unk, beamwidth=beamwidth)
 
         response = urllib.quote(translation+'\n'+','.join(unknown_words))
 
@@ -68,13 +72,15 @@ class Sampler:
         self.tokenizer_cmd = tokenizer_cmd
         self.detokenizer_cmd = detokenizer_cmd
 
-    def sample(self, sentence, ignore_unk=False):
+    def sample(self, sentence, ignore_unk=False, beamwidth=10):
         if self.tokenizer_cmd:
             tokenizer=Popen(self.tokenizer_cmd, stdin=PIPE, stdout=PIPE)
             sentence, _ = tokenizer.communicate(sentence)
         seq, parsed_in = parse_input(self.state, self.indx_word, sentence, idx2word=self.idict_src)
         # Sample a translation and detokenize it
-        trans, cost, _ = sample(self.lm_model, seq, 10, beam_search=self.beam_search, normalize=True, ignore_unk=ignore_unk)
+        trans, cost, _ = sample(self.lm_model, seq, beamwidth,
+                beam_search=self.beam_search, normalize=True,
+                ignore_unk=ignore_unk)
         if self.detokenizer_cmd:
             detokenizer=Popen(self.detokenizer_cmd, stdin=PIPE, stdout=PIPE)
             detokenized_sentence, _ = detokenizer.communicate(trans[0])
