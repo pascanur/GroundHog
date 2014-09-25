@@ -13,7 +13,7 @@ import numpy
 import experiments.nmt
 from experiments.nmt import\
     RNNEncoderDecoder,\
-    prototype_phrase_state,\
+    prototype_state,\
     parse_input
 from experiments.nmt.sample import sample, BeamSearch
 
@@ -124,7 +124,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    state = prototype_phrase_state()
+    state = prototype_state()
     with open(args.state) as src:
         state.update(cPickle.load(src))
     state.update(eval("dict({})".format(args.changes)))
@@ -153,7 +153,7 @@ def main():
 
     tokenizer_cmd = [os.getcwd()+'/tokenizer.perl', '-l', 'en', '-q', '-']
     detokenizer_cmd = [os.getcwd()+'/detokenizer.perl', '-l', 'fr', '-q', '-']
-    sampler = Sampler(state, lm_model, indx_word, idict_src, beam_search = beam_search, 
+    sampler = Sampler(state, lm_model, indx_word, idict_src, beam_search = beam_search,
             tokenizer_cmd=tokenizer_cmd, detokenizer_cmd=detokenizer_cmd)
     httpd.sampler = sampler
 

@@ -13,7 +13,7 @@ from experiments.nmt import\
         RNNEncoderDecoder,\
         parse_input,\
         get_batch_iterator,\
-        prototype_phrase_state
+        prototype_state
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    state = prototype_phrase_state()
+    state = prototype_state()
     with open(args.state) as src:
         state.update(cPickle.load(src))
     state.update(eval("dict({})".format(args.changes)))
@@ -140,7 +140,7 @@ def main():
                     state['bs'], raise_unk=not args.allow_unk)
             data_iter.start()
         else:
-            data_iter = get_batch_iterator(state, rng)
+            data_iter = get_batch_iterator(state)
             data_iter.start(0)
 
         score_file = open(args.scores, "w") if args.scores else sys.stdout
