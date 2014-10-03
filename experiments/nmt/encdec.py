@@ -1491,11 +1491,14 @@ class RNNEncoderDecoder(object):
                 return probs
         return probs_computer
 
-def parse_input(state, word2idx, line, raise_unk=False, idx2word=None):
+def parse_input(state, word2idx, line, raise_unk=False, idx2word=None, unk_sym=-1, null_sym=-1):
+    if unk_sym < 0:
+        unk_sym = state['unk_sym_source']
+    if null_sym < 0:
+        null_sym = state['null_sym_source']
     seqin = line.split()
     seqlen = len(seqin)
     seq = numpy.zeros(seqlen+1, dtype='int64')
-    unk_sym = state['unk_sym_source']
     for idx,sx in enumerate(seqin):
         seq[idx] = word2idx.get(sx, unk_sym)
         if seq[idx] >= state['n_sym_source']:
@@ -1503,9 +1506,9 @@ def parse_input(state, word2idx, line, raise_unk=False, idx2word=None):
         if seq[idx] == unk_sym and raise_unk:
             raise Exception("Unknown word {}".format(sx))
 
-    seq[-1] = state['null_sym_source']
+    seq[-1] = null_sym
     if idx2word:
-        idx2word[state['null_sym_source']] = '<eos>'
+        idx2word[null_sym] = '<eos>'
         idx2word[unk_sym] = state['oov']
         parsed_in = [idx2word[sx] for sx in seq]
         return seq, " ".join(parsed_in)
