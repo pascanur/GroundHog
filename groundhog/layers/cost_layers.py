@@ -16,7 +16,6 @@ import logging
 import theano
 import theano.tensor as TT
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
-from theano.sandbox.cuda.blocksparse import sparse_block_dot_SS
 
 from groundhog import utils
 from groundhog.utils import sample_weights, sample_weights_classic,\
@@ -1182,6 +1181,11 @@ class HierarchicalSoftmaxLayer(SoftmaxLayer):
                  name=None,
                  **kwargs):
 
+        assert theano.config.device[:3] == 'gpu', 'Hierarchical softmax is not supported without GPU'
+
+        from theano.sandbox.cuda.blocksparse import sparse_block_dot_SS
+        self.sparse_block_dot_SS = sparse_block_dot_SS
+
         self.grad_scale = grad_scale
         super(CostLayer, self).__init__(n_in, n_out, rng, name)
         self.n_words_class = numpy.ceil(numpy.sqrt(self.n_out)).astype('int64') # oSize
@@ -1285,7 +1289,7 @@ class HierarchicalSoftmaxLayer(SoftmaxLayer):
             class_val = utils.softmax(TT.dot(emb_val, W_em) + b_em)
 
             # compute the word probabilities
-            word_val = utils.softmax(sparse_block_dot_SS(U_em, 
+            word_val = utils.softmax(self.sparse_block_dot_SS(U_em, 
                 emb_val[:, None, :], TT.zeros((bs, 1), dtype='int64'), c_em, outputIdx)[:, 0, :])
 
             class_val = class_val[TT.arange(bs), class_vec]
