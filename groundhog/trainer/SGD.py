@@ -1,5 +1,5 @@
 """
-Stochastic Gradient Descent with momentum.
+Stochastic Gradient Descent.
 
 
 TODO: write more documentation
