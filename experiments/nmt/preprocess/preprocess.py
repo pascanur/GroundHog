@@ -50,6 +50,8 @@ parser.add_argument("-e", "--each", action="store_true",
                     help="output files for each separate input file")
 parser.add_argument("-c", "--count", action="store_true",
                     help="save the word counts")
+parser.add_argument("-t", "--char", action="store_true",
+                    help="character-level processing")
 
 
 def open_files():
@@ -119,7 +121,12 @@ def create_dictionary():
             counter = Counter()
             sentence_count = 0
             for line in input_file:
-                counter.update(line.strip().split(' '))
+                words = None
+                if args.char:
+                    words = list(line.strip().decode('utf-8'))
+                else:
+                    words = line.strip().split(' ')
+                counter.update(words)
                 sentence_count += 1
         counters.append(counter)
         sentence_counts.append(sentence_count)
@@ -174,7 +181,10 @@ def binarize():
         binarized_corpus = []
         ngram_count = 0
         for sentence_count, sentence in enumerate(input_file):
-            words = sentence.strip().split(' ')
+            if args.char:
+                words = list(sentence.strip().decode('utf-8'))
+            else:
+                words = sentence.strip().split(' ')
             binarized_sentence = [vocab.get(word, 1) for word in words]
             binarized_corpus.append(binarized_sentence)
             if args.ngram:
