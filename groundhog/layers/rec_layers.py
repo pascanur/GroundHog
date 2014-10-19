@@ -1005,8 +1005,13 @@ class RecurrentLayer(Layer):
         self.restricted_params = [x for x in self.params]
         if self.weight_noise:
             self.nW_hh = theano.shared(self.W_hh.get_value()*0, name='noise_'+self.W_hh.name)
-            self.nG_hh = theano.shared(self.G_hh.get_value()*0, name='noise_'+self.G_hh.name)
-            self.noise_params = [self.nW_hh,self.nG_hh]
+            self.noise_params = [self.nW_hh]
+            if self.gating:
+                self.nG_hh = theano.shared(self.G_hh.get_value()*0, name='noise_'+self.G_hh.name)
+                self.noise_params += [self.nG_hh]
+            if self.reseting:
+                self.nR_hh = theano.shared(self.R_hh.get_value()*0, name='noise_'+self.R_hh.name)
+                self.noise_params += [self.nR_hh]
             self.noise_params_shape_fn = [constant_shape(x.get_value().shape)
                             for x in self.noise_params]
 
