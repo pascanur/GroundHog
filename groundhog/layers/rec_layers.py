@@ -229,6 +229,7 @@ class RecurrentMultiLayer(Layer):
             W_hhs = self.W_hhs
             b_hhs = self.b_hhs
         preactiv = TT.dot(state_before, W_hhs[0]) +state_below
+        preactiv = TT.cast(preactiv,theano.config.floatX)
         h = self.activation[0](preactiv)
         if self.activ_noise and use_noise:
             h = h + self.trng.normal(h.shape, avg=0, std=self.activ_noise, dtype=h.dtype)
@@ -1065,6 +1066,7 @@ class RecurrentLayer(Layer):
         else:
             state_before_ = state_before
         preactiv = TT.dot(state_before_, W_hh) + state_below
+        preactiv = TT.cast(preactiv,theano.config.floatX)
         h = self.activation(preactiv)
         if self.gating and gater_below:
             gater = self.gater_activation(TT.dot(state_before, G_hh) + 
