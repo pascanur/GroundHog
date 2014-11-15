@@ -1322,6 +1322,10 @@ class HierarchicalSoftmaxLayer(SoftmaxLayer):
         target_ndim = target.ndim
         target_shape = target.shape
 
+        if state_below.ndim == 3:
+            shp = state_below.shape
+            state_below = state_below.reshape([shp[0]*shp[1], shp[2]])
+
         class_probs = self.fprop(state_below,
                                  temp=temp,
                                  target=target,
