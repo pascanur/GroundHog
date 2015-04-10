@@ -13,6 +13,7 @@ from groundhog.layers import\
         Layer,\
         MultiLayer,\
         SoftmaxLayer,\
+        HierarchicalSoftmaxLayer,\
         LSTMLayer, \
         RecurrentLayer,\
         RecursiveConvolutionalLayer,\
@@ -128,7 +129,7 @@ def create_padded_batch(state, x, y, return_dict=False):
     else:
         return X, Xmask, Y, Ymask
 
-def get_batch_iterator(state, rng):
+def get_batch_iterator(state):
 
     class Iterator(PytablesBitextIterator):
 
@@ -237,7 +238,6 @@ class RecurrentLayerWithSearch(Layer):
         super(RecurrentLayerWithSearch, self).__init__(self.n_hids,
                 self.n_hids, rng, name)
 
-        self.trng = RandomStreams(self.rng.randint(int(1e6)))
         self.params = []
         self._init_params()
 
@@ -287,8 +287,7 @@ class RecurrentLayerWithSearch(Layer):
                 name="D_%s"%self.name)
         self.params.append(self.D_pe)
         self.params_grad_scale = [self.grad_scale for x in self.params]
-        self.restricted_params = [x for x in self.params]
-
+       
     def set_decoding_layers(self, c_inputer, c_reseter, c_updater):
         self.c_inputer = c_inputer
         self.c_reseter = c_reseter
@@ -353,8 +352,9 @@ class RecurrentLayerWithSearch(Layer):
         if cndim == 2:
             c = c[:, None, :]
 
-        # Warning: either source_num or target_num should be 1
-        # for the following code to make any sense.
+        # Warning: either source_num or target_num should be equal,
+        #          or on of them sould be 1 (they have to broadcast)
+        #          for the following code to make any sense.
         source_len = c.shape[0]
         source_num = c.shape[1]
         target_num = state_before.shape[0]
@@ -459,26 +459,27 @@ class RecurrentLayerWithSearch(Layer):
             else:
                 init_state = TT.alloc(floatX(0), self.n_hids)
 
+        p_from_c =  utils.dot(c, self.A_cp).reshape(
+                (c.shape[0], c.shape[1], self.n_hids))
+        
         if mask:
             sequences = [state_below, mask, updater_below, reseter_below]
-            non_sequences = [c_mask]
-            fn = lambda x, m, g, r, h, c1, cm, pc : self.step_fprop(x, h, mask=m,
+            non_sequences = [c, c_mask, p_from_c] 
+            #              seqs    | out |  non_seqs
+            fn = lambda x, m, g, r,   h,   c1, cm, pc : self.step_fprop(x, h, mask=m,
                     gater_below=g, reseter_below=r,
                     c=c1, p_from_c=pc, c_mask=cm,
                     use_noise=use_noise, no_noise_bias=no_noise_bias,
                     return_alignment=return_alignment)
         else:
             sequences = [state_below, updater_below, reseter_below]
-            non_sequences = []
-            fn = lambda x, g, r, h, c1, pc : self.step_fprop(x, h,
+            non_sequences = [c, p_from_c]
+            #            seqs   | out | non_seqs
+            fn = lambda x, g, r,   h,    c1, pc : self.step_fprop(x, h,
                     gater_below=g, reseter_below=r,
                     c=c1, p_from_c=pc,
                     use_noise=use_noise, no_noise_bias=no_noise_bias,
                     return_alignment=return_alignment)
-
-        p_from_c =  utils.dot(c, self.A_cp).reshape(
-                (c.shape[0], c.shape[1], self.n_hids))
-        non_sequences = [c] + non_sequences + [p_from_c]
 
         outputs_info = [init_state, None]
         if return_alignment:
@@ -894,6 +895,9 @@ class Decoder(EncoderDecoderBase):
                         **decoding_kwargs)
 
     def _create_readout_layers(self):
+        softmax_layer = self.state['softmax_layer'] if 'softmax_layer' in self.state \
+                        else 'SoftmaxLayer'
+
         logger.debug("_create_readout_layers")
 
         readout_kwargs = dict(self.default_kwargs)
@@ -934,7 +938,7 @@ class Decoder(EncoderDecoderBase):
             act_layer = UnaryOp(activation=eval(self.state['unary_activ']))
             drop_layer = DropOp(rng=self.rng, dropout=self.state['dropout'])
             self.output_nonlinearities = [act_layer, drop_layer]
-            self.output_layer = SoftmaxLayer(
+            self.output_layer = eval(softmax_layer)(
                     self.rng,
                     self.state['dim'] / self.state['maxout_part'],
                     self.state['n_sym_target'],
@@ -945,7 +949,7 @@ class Decoder(EncoderDecoderBase):
                     **self.default_kwargs)
         else:
             self.output_nonlinearities = []
-            self.output_layer = SoftmaxLayer(
+            self.output_layer = eval(softmax_layer)(
                     self.rng,
                     self.state['dim'],
                     self.state['n_sym_target'],
@@ -1029,6 +1033,7 @@ class Decoder(EncoderDecoderBase):
         # to input, reset and update signals.
         # All the shapes if mode == evaluation:
         #   (n_words, dim)
+        # where: n_words = max_seq_len * batch_size
         # All the shape if mode != evaluation:
         #   (n_samples, dim)
         input_signals = []
@@ -1094,10 +1099,14 @@ class Decoder(EncoderDecoderBase):
                     **add_kwargs)
             if self.state['search']:
                 if self.compute_alignment:
+                    #This implicitly wraps each element of result.out with a Layer to keep track of the parameters.
+                    #It is equivalent to h=result[0], ctx=result[1] etc. 
                     h, ctx, alignment = result
                     if mode == Decoder.EVALUATION:
                         alignment = alignment.out
                 else:
+                    #This implicitly wraps each element of result.out with a Layer to keep track of the parameters.
+                    #It is equivalent to h=result[0], ctx=result[1]
                     h, ctx = result
             else:
                 h = result
@@ -1482,11 +1491,14 @@ class RNNEncoderDecoder(object):
                 return probs
         return probs_computer
 
-def parse_input(state, word2idx, line, raise_unk=False, idx2word=None):
+def parse_input(state, word2idx, line, raise_unk=False, idx2word=None, unk_sym=-1, null_sym=-1):
+    if unk_sym < 0:
+        unk_sym = state['unk_sym_source']
+    if null_sym < 0:
+        null_sym = state['null_sym_source']
     seqin = line.split()
     seqlen = len(seqin)
     seq = numpy.zeros(seqlen+1, dtype='int64')
-    unk_sym = state['unk_sym_source']
     for idx,sx in enumerate(seqin):
         seq[idx] = word2idx.get(sx, unk_sym)
         if seq[idx] >= state['n_sym_source']:
@@ -1494,9 +1506,9 @@ def parse_input(state, word2idx, line, raise_unk=False, idx2word=None):
         if seq[idx] == unk_sym and raise_unk:
             raise Exception("Unknown word {}".format(sx))
 
-    seq[-1] = state['null_sym_source']
+    seq[-1] = null_sym
     if idx2word:
-        idx2word[state['null_sym_source']] = '<eos>'
+        idx2word[null_sym] = '<eos>'
         idx2word[unk_sym] = state['oov']
         parsed_in = [idx2word[sx] for sx in seq]
         return seq, " ".join(parsed_in)

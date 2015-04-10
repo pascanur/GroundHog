@@ -93,6 +93,13 @@ In short, you need the following files:
 In experiments/nmt/preprocess, we provide scripts that we use to generate these
 data files from a parallel corpus saved in .txt files. 
 
+The data preparation scripts assume that the the parallel corpus has been
+correctly tokenized already. In the case of English, for instance, you can
+tokenize the text file using tokenizer.pl from Moses (or the one in web-demo):
+```
+perl tokenizer.perl -l en < bitext.en.txt > bitext.en.tok.txt
+```
+
 ```
 python preprocess.py -d vocab.en.pkl -v 30000 -b binarized_text.en.pkl -p *en.txt.gz
 ```

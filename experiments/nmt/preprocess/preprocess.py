@@ -50,6 +50,10 @@ parser.add_argument("-e", "--each", action="store_true",
                     help="output files for each separate input file")
 parser.add_argument("-c", "--count", action="store_true",
                     help="save the word counts")
+parser.add_argument("-t", "--char", action="store_true",
+                    help="character-level processing")
+parser.add_argument("-l", "--lowercase", action="store_true",
+                    help="lowercase")
 
 
 def open_files():
@@ -105,6 +109,8 @@ def create_dictionary():
     # Part I: Counting the words
     counters = []
     sentence_counts = []
+    global_counter = Counter()
+
     for input_file, base_filename in zip(args.input, base_filenames):
         count_filename = base_filename + '.count.pkl'
         input_filename = os.path.basename(input_file.name)
@@ -119,7 +125,15 @@ def create_dictionary():
             counter = Counter()
             sentence_count = 0
             for line in input_file:
-                counter.update(line.strip().split(' '))
+                if args.lowercase:
+                    line = line.lower()
+                words = None
+                if args.char:
+                    words = list(line.strip().decode('utf-8'))
+                else:
+                    words = line.strip().split(' ')
+                counter.update(words)
+                global_counter.update(words)
                 sentence_count += 1
         counters.append(counter)
         sentence_counts.append(sentence_count)
@@ -130,7 +144,7 @@ def create_dictionary():
         input_file.seek(0)
 
     # Part II: Combining the counts
-    combined_counter = reduce(add, counters)
+    combined_counter = global_counter
     logger.info("Total: %d unique words in %d sentences with a total "
                 "of %d words."
                 % (len(combined_counter), sum(sentence_counts),
@@ -174,7 +188,12 @@ def binarize():
         binarized_corpus = []
         ngram_count = 0
         for sentence_count, sentence in enumerate(input_file):
-            words = sentence.strip().split(' ')
+            if args.lowercase:
+                sentence = sentence.lower()
+            if args.char:
+                words = list(sentence.strip().decode('utf-8'))
+            else:
+                words = sentence.strip().split(' ')
             binarized_sentence = [vocab.get(word, 1) for word in words]
             binarized_corpus.append(binarized_sentence)
             if args.ngram:
