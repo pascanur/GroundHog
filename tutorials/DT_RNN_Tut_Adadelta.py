@@ -27,7 +27,7 @@ from groundhog.layers import maxpool, \
         hard_sigmoid, \
         hard_tanh
 from groundhog.models import LM_Model
-from theano.sandbox.scan import scan
+from theano import scan
 
 import numpy
 import theano

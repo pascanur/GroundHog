@@ -15,7 +15,7 @@ import copy
 import theano
 import theano.tensor as TT
 # Nicer interface of scan
-from theano.sandbox.scan import scan
+from theano import scan
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from groundhog import utils
