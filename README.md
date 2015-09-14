@@ -1,7 +1,7 @@
 GroundHog by lisa-groundhog
 ===========================
 
-**WARNING:** Groundhog development is over. Please consider using 
+**WARNING: Groundhog development is over.** Please consider using 
 [Blocks](https://github.com/mila-udem/blocks) instead. For an example of machine translation using Blocks please see [Blocks-examples](https://github.com/mila-udem/blocks-examples) repository
 
 GroundHog is a python framework on top of Theano
