@@ -409,6 +409,240 @@ class CostLayer(Layer):
         raise NotImplemented
 
 
+class LinearLayer(CostLayer):
+    """
+    Linear output layer.
+    """
+
+    def _init_params(self):
+        """
+        Initialize the parameters of the layer, either by using sparse initialization or small
+        isotropic noise.
+        """
+        if self.rank_n_approx:
+            W_em1 = self.init_fn(self.nin,
+                                         self.rank_n_approx,
+                                         self.sparsity,
+                                         self.scale,
+                                         self.rng)
+            W_em2 = self.init_fn(self.rank_n_approx,
+                                         self.nout,
+                                         self.sparsity,
+                                         self.scale,
+                                         self.rng)
+            self.W_em1 = theano.shared(W_em1,
+                                       name='W1_%s'%self.name)
+            self.W_em2 = theano.shared(W_em2,
+                                       name='W2_%s'%self.name)
+            self.b_em = theano.shared(
+                numpy.zeros((self.nout,), dtype=theano.config.floatX),
+                name='b_%s'%self.name)
+            self.params += [self.W_em1, self.W_em2, self.b_em]
+            self.myparams = []#[self.W_em1, self.W_em2, self.b_em]
+            if self.weight_noise:
+                self.nW_em1 = theano.shared(W_em1*0.,
+                                            name='noise_W1_%s'%self.name)
+                self.nW_em2 = theano.shared(W_em*0.,
+                                            name='noise_W2_%s'%self.name)
+                self.nb_em = theano.shared(b_em*0.,
+                                           name='noise_b_%s'%self.name)
+                self.noise_params = [self.nW_em1, self.nW_em2, self.nb_em]
+                self.noise_params_shape_fn = [
+                    constant_shape(x.get_value().shape)
+                    for x in self.noise_params]
+
+        else:
+            W_em = self.init_fn(self.nin,
+                                        self.nout,
+                                        self.sparsity,
+                                        self.scale,
+                                        self.rng)
+            self.W_em = theano.shared(W_em,
+                                      name='W_%s'%self.name)
+            self.b_em = theano.shared(
+                numpy.zeros((self.nout,), dtype=theano.config.floatX),
+                name='b_%s'%self.name)
+            self.add_wghs = []
+            self.n_add_wghs = []
+            if self.additional_inputs:
+                for pos, sz in enumerate(self.additional_inputs):
+                    W_add = self.init_fn(sz,
+                                        self.nout,
+                                        self.sparsity,
+                                        self.scale,
+                                        self.rng)
+                    self.add_wghs += [theano.shared(W_add,
+                                      name='W_add%d_%s'%(pos, self.name))]
+                    if self.weight_noise:
+                        self.n_add_wghs += [theano.shared(W_add*0.,
+                                                      name='noise_W_add%d_%s'%(pos,
+                                                                               self.name))]
+
+            self.params += [self.W_em, self.b_em] + self.add_wghs
+            self.myparams = []#[self.W_em, self.b_em] + self.add_wghs
+            if self.weight_noise:
+                self.nW_em = theano.shared(W_em*0.,
+                                           name='noise_W_%s'%self.name)
+                self.nb_em = theano.shared(numpy.zeros((self.nout,),
+                                                       dtype=theano.config.floatX),
+                                           name='noise_b_%s'%self.name)
+                self.noise_params = [self.nW_em, self.nb_em] + self.n_add_wghs
+                self.noise_params_shape_fn = [
+                    constant_shape(x.get_value().shape)
+                    for x in self.noise_params]
+
+    def _check_dtype(self, matrix, inp):
+        if 'int' in inp.dtype and inp.ndim==2:
+            return matrix[inp.flatten()]
+        elif 'int' in inp.dtype:
+            return matrix[inp]
+        elif 'float' in inp.dtype and inp.ndim == 3:
+            shape0 = inp.shape[0]
+            shape1 = inp.shape[1]
+            shape2 = inp.shape[2]
+            return TT.dot(inp.reshape((shape0*shape1, shape2)), matrix)
+        else:
+            return TT.dot(inp, matrix)
+
+
+    def fprop(self, state_below, temp = numpy.float32(1), use_noise=True,
+             additional_inputs = None):
+        """
+        Constructs the computational graph of this layer.
+        """
+
+        if self.rank_n_approx:
+            if use_noise and self.noise_params:
+                emb_val = self._check_dtype(self.W_em1+self.nW_em1,
+                                          state_below)
+                emb_val = TT.dot(self.W_em2 + self.nW_em2, emb_val)
+            else:
+                emb_val = self._check_dtype(self.W_em1, state_below)
+                emb_val = TT.dot(self.W_em2, emb_val)
+        else:
+            if use_noise and self.noise_params:
+                emb_val = self._check_dtype(self.W_em + self.nW_em, state_below)
+            else:
+                emb_val = self._check_dtype(self.W_em, state_below)
+
+        if additional_inputs:
+            for st, wgs in zip(additional_inputs, self.add_wghs):
+                emb_val += self._check_dtype(wgs, st)
+
+        if use_noise and self.noise_params:
+            emb_val = (emb_val + self.b_em+ self.nb_em)
+        else:
+            emb_val =  (emb_val + self.b_em)
+        self.out = emb_val
+        self.state_below = state_below
+        self.model_output = emb_val
+        return emb_val
+
+    def get_cost(self, state_below, target=None, mask = None, temp=1,
+                 reg = None, scale=None, sum_over_time=True, use_noise=True,
+                additional_inputs=None):
+        """
+        This function computes the cost of this layer.
+
+        :param state_below: theano variable representing the input to the
+            softmax layer
+        :param target: theano variable representing the target for this
+            layer
+        :return: mean cross entropy
+        """
+        class_probs = self.fprop(state_below, temp = temp,
+                                 use_noise=use_noise,
+                                additional_inputs=additional_inputs)
+        pvals = class_probs
+        assert target, 'Computing the cost requires a target'
+        if target.ndim == 3:
+            target = target.reshape((target.shape[0]*target.shape[1],
+                                    target.shape[2]))
+        assert 'float' in target.dtype
+        cost = (class_probs - target)**2
+        if mask:
+            mask = mask.flatten()
+            cost = cost * TT.cast(mask, theano.config.floatX)
+        if sum_over_time is None:
+            sum_over_time = self.sum_over_time
+        if sum_over_time:
+            if state_below.ndim ==3:
+                sh0 = TT.cast(state_below.shape[0],
+                             theano.config.floatX)
+                sh1 = TT.cast(state_below.shape[1],
+                             theano.config.floatX)
+                self.cost = cost.sum()/sh1
+            else:
+                self.cost =cost.sum()
+        else:
+            self.cost = cost.mean()
+        if scale:
+            self.cost = self.cost*scale
+        if reg:
+            self.cost = self.cost + reg
+        self.out = self.cost
+        self.mask = mask
+        self.cost_scale = scale
+        return self.cost
+
+
+    def get_grads(self, state_below, target, mask = None, reg = None,
+                  scale=None, sum_over_time=True, use_noise=True,
+                 additional_inputs=None):
+        """
+        This function implements both the forward and backwards pass of this
+        layer. The reason we do this in a single function is because for the
+        factorized softmax layer is hard to rely on grad and get an
+        optimized graph. For uniformity I've implemented this method for
+        this layer as well (though one doesn't need to use it)
+
+        :param state_below: theano variable representing the input to the
+            softmax layer
+        :param target: theano variable representing the target for this
+            layer
+        :return: cost, dC_dstate_below, param_grads, new_properties
+            dC_dstate_below is a computational graph representing the
+            gradient of the cost wrt to state_below
+            param_grads is a list containing the gradients wrt to the
+            different parameters of the layer
+            new_properties is a dictionary containing additional properties
+            of the model; properties are theano expression that are
+            evaluated and reported by the model
+        """
+        cost = self.get_cost(state_below,
+                             target,
+                             mask = mask,
+                             reg = reg,
+                             scale=scale,
+                             sum_over_time=sum_over_time,
+                             use_noise=use_noise,
+                             additional_inputs=additional_inputs)
+        grads = TT.grad(cost, self.params)
+        if self.additional_gradients:
+            for new_grads, to_replace, properties in self.additional_gradients:
+                gparams, params = new_grads
+                prop_expr = [x[1] for x in properties]
+                replace = [(x[0], TT.grad(cost, x[1])) for x in to_replace]
+                rval = theano.clone(gparams + prop_expr,
+                                    replace=replace)
+                gparams = rval[:len(gparams)]
+                prop_expr = rval[len(gparams):]
+                self.properties += [(x[0], y) for x,y in zip(properties,
+                                                             prop_expr)]
+                for gp, p in zip(gparams, params):
+                    grads[self.params.index(p)] += gp
+
+        self.cost = cost
+        self.grads = grads
+        def Gvs_fn(*args):
+            w = (1 - self.model_output) * self.model_output * state_below.shape[1]
+            Gvs = TT.Lop(self.model_output, self.params,
+                         TT.Rop(self.model_output, self.params, args)/w)
+            return Gvs
+        self.Gvs = Gvs_fn
+        return cost, grads
+
+
 class SigmoidLayer(CostLayer):
     """
     Sigmoid output layer.
